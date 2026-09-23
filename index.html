@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Prestadores &amp; Faturamento | CompesaPrev</title>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<style>
+
+  :root{
+    --azul:#2F4A97; --azul-escuro:#1F3266; --azul-claro:#0098DB;
+    --verde:#8FC74A; --verde-escuro:#6FA334;
+    --bg:#F3F5FA; --card:#FFFFFF; --texto:#1C2430; --texto-suave:#6B7690;
+    --borda:#E3E7F0; --vermelho:#D64550; --amarelo:#E5A93C; --roxo:#7B4FB3; --cinza:#9AA3B8;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI',-apple-system,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--texto);}
+
+  header{
+    background:linear-gradient(120deg,var(--azul-escuro),var(--azul) 65%,var(--azul-claro) 130%);
+    padding:20px 32px;display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:16px;box-shadow:0 4px 18px rgba(31,50,102,.25);
+  }
+  .brand{display:flex;align-items:center;gap:16px;}
+  .brand img{height:54px;background:#fff;border-radius:10px;padding:6px 10px;}
+  .brand h1{color:#fff;font-size:19px;margin:0;font-weight:600;}
+  .brand p{color:#D6E0F5;margin:2px 0 0;font-size:12.5px;}
+  .updated{color:#D6E0F5;font-size:11.5px;text-align:right;}
+  .updated b{color:#fff;display:block;font-size:13.5px;}
+
+  .databar{background:#EAF0FC;border-bottom:1px solid var(--borda);padding:9px 32px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:12.5px;}
+  .databar-status{display:flex;align-items:center;gap:8px;color:var(--azul-escuro);font-weight:600;}
+  .databar-status .dot{width:9px;height:9px;border-radius:50%;background:var(--amarelo);display:inline-block;}
+  .databar-status .dot.ok{background:var(--verde);}
+  .databar-status .dot.err{background:var(--vermelho);}
+  .databar-actions{display:flex;gap:8px;}
+  .btn-upload,.btn-refresh{background:#fff;border:1px solid var(--azul);color:var(--azul);font-weight:600;
+    font-size:12.5px;padding:6px 13px;border-radius:20px;cursor:pointer;}
+  .btn-upload:hover,.btn-refresh:hover{background:var(--azul);color:#fff;}
+
+  nav.tabs{display:flex;gap:4px;background:#fff;padding:0 28px;border-bottom:1px solid var(--borda);overflow-x:auto;}
+  nav.tabs button{border:none;background:transparent;padding:14px 17px;font-size:14px;font-weight:600;
+    color:var(--texto-suave);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all .15s;}
+  nav.tabs button:hover{color:var(--azul);}
+  nav.tabs button.active{color:var(--azul);border-bottom-color:var(--verde);}
+
+  main{padding:20px 28px 60px;}
+
+  .empty-banner{background:#FFF7E6;border:1.5px dashed var(--amarelo);border-radius:14px;padding:24px 26px;
+    margin-bottom:20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+  .empty-banner.err{background:#FDECEC;border-color:var(--vermelho);}
+  .empty-banner-icon{font-size:32px;}
+  .empty-banner h2{margin:0 0 4px;font-size:16.5px;}
+  .empty-banner p{margin:0;font-size:13px;color:var(--texto-suave);max-width:640px;}
+  .btn-upload-big{margin-left:auto;background:var(--azul);color:#fff;font-weight:700;font-size:13.5px;
+    padding:12px 20px;border-radius:10px;cursor:pointer;white-space:nowrap;}
+  .btn-upload-big:hover{background:var(--azul-escuro);}
+
+  .filters{background:var(--card);border:1px solid var(--borda);border-radius:12px;
+    margin-bottom:18px;overflow:hidden;}
+  .filters-head{display:flex;align-items:center;gap:12px;padding:12px 18px;flex-wrap:wrap;}
+  .filters-head-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0;}
+  .filters-toggle{background:none;border:1px solid var(--borda);color:var(--azul-escuro);font-weight:700;
+    font-size:12.5px;padding:7px 13px;border-radius:20px;cursor:pointer;white-space:nowrap;display:flex;
+    align-items:center;gap:6px;}
+  .filters-toggle:hover{border-color:var(--azul);}
+  .filters-toggle .chev{transition:transform .15s;font-size:10px;}
+  .filters-toggle.open .chev{transform:rotate(180deg);}
+  .filters-toggle .cnt{background:var(--azul);color:#fff;font-size:10.5px;font-weight:700;
+    padding:1px 7px;border-radius:10px;min-width:16px;text-align:center;}
+  .filters-summary{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;}
+  .filters-summary-empty{font-size:12.5px;color:var(--texto-suave);}
+  .mini-chip{background:#EAF0FC;color:var(--azul-escuro);font-size:11.5px;font-weight:600;
+    padding:4px 6px 4px 11px;border-radius:14px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+  .mini-chip button{background:none;border:none;color:var(--azul-escuro);opacity:.6;cursor:pointer;
+    font-size:13px;line-height:1;padding:0 3px;border-radius:50%;}
+  .mini-chip button:hover{opacity:1;background:rgba(47,74,151,.15);}
+  .filters .clear{font-size:12.5px;color:var(--azul);background:none;border:1px solid var(--azul);
+    padding:7px 14px;border-radius:20px;cursor:pointer;font-weight:600;white-space:nowrap;}
+  .filters .clear:hover{background:var(--azul);color:#fff;}
+
+  .filters-body{display:none;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));
+    gap:18px 24px;padding:14px 18px 16px;border-top:1px solid var(--borda);}
+  .filters-body.open{display:grid;}
+  .filter-group h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--texto-suave);display:flex;align-items:center;gap:6px;}
+  .filter-group h4 .cnt{background:var(--azul);color:#fff;font-size:9.5px;font-weight:700;
+    padding:1px 6px;border-radius:9px;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;max-height:104px;overflow-y:auto;padding-right:4px;}
+  .chip-row::-webkit-scrollbar{width:6px;}
+  .chip-row::-webkit-scrollbar-thumb{background:var(--borda);border-radius:4px;}
+  .chip{padding:4px 11px;border-radius:20px;border:1px solid var(--borda);font-size:12px;cursor:pointer;
+    background:#fff;user-select:none;transition:all .12s;white-space:nowrap;}
+  .chip:hover{border-color:var(--azul-claro);}
+  .chip.active{background:var(--azul);border-color:var(--azul);color:#fff;}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+  @media(max-width:720px){.kpis{grid-template-columns:repeat(2,1fr);}}
+  .kpi{background:var(--card);border:1px solid var(--borda);border-radius:12px;padding:15px 15px 13px;border-top:4px solid var(--azul);}
+  .kpi .num{font-size:24px;font-weight:700;color:var(--azul-escuro);}
+  .kpi .lbl{font-size:11.5px;color:var(--texto-suave);margin-top:3px;}
+  .kpi.ok{border-top-color:var(--verde);} .kpi.bad{border-top-color:var(--vermelho);}
+  .kpi.warn{border-top-color:var(--amarelo);} .kpi.info{border-top-color:var(--azul-claro);}
+  .kpi.neutro{border-top-color:var(--cinza);}
+
+  .grid{display:grid;gap:15px;margin-bottom:15px;}
+  .grid.c2{grid-template-columns:1fr 1fr;}
+  .grid.c3{grid-template-columns:1.25fr 1fr 1fr;}
+  @media(max-width:980px){.grid.c2,.grid.c3{grid-template-columns:1fr;}}
+
+  .card{background:var(--card);border:1px solid var(--borda);border-radius:12px;padding:16px 18px 10px;}
+  .card h3{margin:0 0 3px;font-size:14.5px;}
+  .card p.hint{margin:0 0 10px;font-size:11.5px;color:var(--texto-suave);}
+  .card canvas{max-height:290px;}
+  .tall canvas{max-height:340px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.6px;}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--borda);vertical-align:top;}
+  th{color:var(--texto-suave);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;background:#fff;z-index:1;}
+  tr:hover td{background:#F7F9FD;}
+  .table-wrap{max-height:560px;overflow:auto;border:1px solid var(--borda);border-radius:10px;}
+
+  .badge{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;display:inline-block;white-space:nowrap;}
+  .b-verde{background:#E6F4E1;color:#4C8A2A;}
+  .b-vermelho{background:#FCE7E8;color:#B93A44;}
+  .b-azul{background:#E1F0FA;color:#1B72A8;}
+  .b-amarelo{background:#FDF3E0;color:#9C6B14;}
+  .b-cinza{background:#EEF0F5;color:#5C6478;}
+  .b-roxo{background:#F1E8FC;color:#7B4FB3;}
+
+  .search-row{display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
+  .search-row input{padding:9px 13px;border:1px solid var(--borda);border-radius:8px;font-size:13px;flex:1;min-width:220px;}
+  .count-tag{font-size:12px;color:var(--texto-suave);}
+  .empty-state{padding:40px;text-align:center;color:var(--texto-suave);font-size:13.5px;}
+  footer{padding:20px 30px 40px;color:var(--texto-suave);font-size:11.5px;text-align:center;}
+  .tab-panel{display:none;} .tab-panel.active{display:block;}
+  .nota{font-size:11.5px;color:var(--texto-suave);background:#F7F9FD;border-left:3px solid var(--azul-claro);
+    padding:9px 13px;border-radius:0 8px 8px 0;margin-bottom:14px;}
+
+  /* ---- extras do painel de prestadores ---- */
+  .file-pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .file-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:14px;background:#fff;
+    border:1px solid var(--borda);color:var(--texto-suave);white-space:nowrap;}
+  .file-pill.ok{border-color:#BFE0A8;color:#4C8A2A;background:#F2FAEC;}
+  .file-pill.miss{border-color:#F3C3C7;color:#B93A44;background:#FDF1F2;}
+  #dataUpdated{font-weight:400;color:var(--texto-suave);}
+  #dataUpdated b{color:var(--azul-escuro);font-weight:700;}
+  #dataUpdated .aviso{background:#FDF3E0;color:#9C6B14;font-weight:700;padding:1px 8px;border-radius:10px;border:1px solid #E5A93C;}
+  .kpi .sub{font-size:11px;color:var(--texto-suave);margin-top:2px;}
+  .kpi.roxo{border-top-color:var(--roxo);}
+  .grid.c1{grid-template-columns:1fr;}
+  .card .table-wrap.short{max-height:360px;}
+  td.num,th.num{text-align:right;white-space:nowrap;}
+  td.doc{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--texto-suave);}
+  td .fant{display:block;font-size:11px;color:var(--texto-suave);}
+  tr.total td{font-weight:700;background:#F7F9FD;}
+  .view-switch{display:flex;gap:4px;background:#EEF1F8;padding:3px;border-radius:20px;}
+  .view-switch button{border:none;background:transparent;font-size:12.5px;font-weight:600;color:var(--texto-suave);
+    padding:6px 13px;border-radius:17px;cursor:pointer;}
+  .view-switch button.active{background:#fff;color:var(--azul);box-shadow:0 1px 3px rgba(31,50,102,.15);}
+  .card-empty{padding:30px 10px;text-align:center;color:var(--texto-suave);font-size:12.5px;}
+  .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+  .card-head .count-tag{margin-top:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <img src="logo.png" alt="CompesaPrev">
+    <div>
+      <h1>Dashboard de Prestadores &amp; Faturamento</h1>
+      <p>Envio de PEG, situação do faturamento e notas fiscais por prestador</p>
+    </div>
+  </div>
+  <div class="updated"><b id="competencias">—</b>competências cobertas pela base</div>
+</header>
+
+<div class="databar" id="databar">
+  <div class="databar-status" id="dataStatus">
+    <span class="dot" id="dataDot"></span>
+    <span id="dataStatusText">Carregando relatórios...</span>
+    <span id="dataUpdated"></span>
+  </div>
+  <div class="file-pills" id="filePills"></div>
+  <div class="databar-actions">
+    <label class="btn-upload">📁 Carregar planilhas<input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden></label>
+    <button class="btn-refresh" id="btnRefresh">🔄 Atualizar</button>
+  </div>
+</div>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="geral">Visão Geral</button>
+  <button class="tab-btn" data-tab="cobertura">Cadastro x Envio</button>
+  <button class="tab-btn" data-tab="peg">PEG &amp; Situação</button>
+  <button class="tab-btn" data-tab="nf">Notas Fiscais</button>
+  <button class="tab-btn" data-tab="base">Base de Dados</button>
+</nav>
+
+<main>
+  <div class="empty-banner" id="emptyBanner" style="display:none;">
+    <div class="empty-banner-icon">📊</div>
+    <div>
+      <h2 id="emptyBannerTitle">Nenhum dado carregado ainda</h2>
+      <p id="emptyBannerText">Aguardando a leitura das planilhas...</p>
+    </div>
+    <label class="btn-upload-big">📁 Selecionar planilhas (.xlsx)<input type="file" id="fileInputBig" accept=".xlsx,.xls" multiple hidden></label>
+  </div>
+
+  <div class="filters" id="filterPanel"></div>
+  <div class="kpis" id="kpiRow"></div>
+
+  <!-- ===== VISÃO GERAL ===== -->
+  <div class="tab-panel active" id="tab-geral">
+    <div class="grid c3">
+      <div class="card tall">
+        <h3>Movimento no Período</h3>
+        <p class="hint">O que cada prestador do cadastro enviou — clique para filtrar</p>
+        <canvas id="chMovimento"></canvas>
+      </div>
+      <div class="card tall">
+        <h3>PEGs e Guias por Competência</h3>
+        <p class="hint">Competência contábil do PEG</p>
+        <canvas id="chCompetencia"></canvas>
+      </div>
+      <div class="card tall">
+        <h3>Situação dos PEGs</h3>
+        <p class="hint">Onde está cada PEG no fluxo — clique para filtrar</p>
+        <canvas id="chSituacao"></canvas>
+      </div>
+    </div>
+    <div class="grid c2">
+      <div class="card tall">
+        <h3>Tipo de Prestador x Movimento</h3>
+        <p class="hint">Cruzamento: quais tipos mais enviam e quais ficam parados</p>
+        <canvas id="chTipoMov"></canvas>
+      </div>
+      <div class="card tall">
+        <h3>Categoria x Movimento</h3>
+        <p class="hint">Credenciados, reembolso, fornecedores...</p>
+        <canvas id="chCatMov"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CADASTRO x ENVIO ===== -->
+  <div class="tab-panel" id="tab-cobertura">
+    <div class="nota">
+      Aqui o <b>cadastro completo de prestadores</b> é cruzado com o que chegou no período.
+      Um prestador conta como "enviou PEG" se tem ao menos um PEG na(s) competência(s) do recorte atual.
+      "Deixaram de enviar" compara as duas últimas competências selecionadas.
+    </div>
+    <div class="grid c2">
+      <div class="card tall">
+        <h3>% do Cadastro que Enviou PEG, por Tipo</h3>
+        <p class="hint">Adesão de cada tipo de prestador — clique para filtrar</p>
+        <canvas id="chAdesaoTipo"></canvas>
+      </div>
+      <div class="card tall">
+        <h3>Regularidade entre Competências</h3>
+        <p class="hint">Entre quem enviou PEG: mandou em todos os meses ou só em alguns?</p>
+        <canvas id="chRegularidade"></canvas>
+        <div class="card-empty" id="regularidadeVazio" style="display:none;">Selecione ao menos duas competências para comparar.</div>
+      </div>
+    </div>
+    <div class="grid c2">
+      <div class="card">
+        <div class="card-head"><div><h3 id="ttlDeixaram">Deixaram de Enviar</h3>
+          <p class="hint" id="hintDeixaram">Enviaram PEG na competência anterior e não na última</p></div>
+          <span class="count-tag" id="cntDeixaram"></span></div>
+        <div class="table-wrap short"><table id="tblDeixaram"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h3 id="ttlPassaram">Passaram a Enviar</h3>
+          <p class="hint" id="hintPassaram">Enviaram PEG na última competência e não na anterior</p></div>
+          <span class="count-tag" id="cntPassaram"></span></div>
+        <div class="table-wrap short"><table id="tblPassaram"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>Cadastrados sem Nenhum Envio no Período</h3>
+        <p class="hint">Nem PEG, nem nota fiscal no recorte atual</p></div>
+        <span class="count-tag" id="cntSemEnvio"></span></div>
+      <div class="table-wrap"><table id="tblSemEnvio"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ===== PEG & SITUAÇÃO ===== -->
+  <div class="tab-panel" id="tab-peg">
+    <div class="grid c2">
+      <div class="card">
+        <h3>Situação x Competência</h3>
+        <p class="hint">Quanto de cada mês já foi faturado</p>
+        <canvas id="chSitMes"></canvas>
+      </div>
+      <div class="card">
+        <h3>PEGs por Data Contábil</h3>
+        <p class="hint">Distribuição dos PEGs ao longo dos dias</p>
+        <canvas id="chDia"></canvas>
+      </div>
+    </div>
+    <div class="grid c2">
+      <div class="card tall">
+        <h3>Prestadores com Mais PEGs</h3>
+        <p class="hint">Top 15, empilhado pela situação</p>
+        <canvas id="chTopPeg"></canvas>
+      </div>
+      <div class="card tall">
+        <h3>Prestadores com Mais Guias</h3>
+        <p class="hint">Top 15 por quantidade de guias nos PEGs</p>
+        <canvas id="chTopGuia"></canvas>
+      </div>
+    </div>
+    <div class="grid c1">
+      <div class="card tall">
+        <h3>Tipo de Prestador x Situação</h3>
+        <p class="hint">Cruzamento: em que tipo de prestador o faturamento está travado — clique para filtrar</p>
+        <canvas id="chTipoSit"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>PEGs em Aberto por Prestador</h3>
+        <p class="hint">Ainda não faturados (digitação, conferência, verificação ou pronto) — do mais pendente para o menos</p></div>
+        <span class="count-tag" id="cntAberto"></span></div>
+      <div class="table-wrap"><table id="tblAberto"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ===== NOTAS FISCAIS ===== -->
+  <div class="tab-panel" id="tab-nf">
+    <div class="nota">
+      A competência da nota fiscal é o <b>mês de inclusão</b> no sistema; a data de emissão aparece à parte.
+      "Defasagem" = quantos meses separam a emissão da nota da competência em que ela foi incluída.
+    </div>
+    <div class="grid c2">
+      <div class="card tall">
+        <h3>Valor por Prestador</h3>
+        <p class="hint">Top 15 por valor total das notas</p>
+        <canvas id="chNfValor"></canvas>
+      </div>
+      <div class="card tall">
+        <h3>Valor por Tipo de Prestador</h3>
+        <p class="hint">Participação no total — clique para filtrar</p>
+        <canvas id="chNfTipo"></canvas>
+      </div>
+    </div>
+    <div class="grid c2">
+      <div class="card">
+        <h3>Notas por Mês de Emissão</h3>
+        <p class="hint">Quantidade de notas (o valor aparece ao passar o mouse)</p>
+        <canvas id="chNfEmissao"></canvas>
+      </div>
+      <div class="card">
+        <h3>Defasagem Emissão → Inclusão</h3>
+        <p class="hint">Notas incluídas no mesmo mês em que foram emitidas ou depois</p>
+        <canvas id="chNfDefasagem"></canvas>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:15px;">
+      <div class="card-head"><div><h3>Notas Fiscais do Período</h3>
+        <p class="hint">Ordenadas pelo valor</p></div>
+        <span class="count-tag" id="cntNotas"></span></div>
+      <div class="table-wrap"><table id="tblNotas"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>Fornecedores com PEG e sem Nota Fiscal</h3>
+        <p class="hint" id="hintFornSemNf">Enviaram PEG no recorte, mas nenhuma nota fiscal foi incluída no período</p></div>
+        <span class="count-tag" id="cntFornSemNf"></span></div>
+      <div class="table-wrap short"><table id="tblFornSemNf"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ===== BASE ===== -->
+  <div class="tab-panel" id="tab-base">
+    <div class="card">
+      <div class="search-row">
+        <div class="view-switch" id="viewSwitch">
+          <button data-view="prestadores" class="active">Prestadores</button>
+          <button data-view="pegs">PEGs</button>
+          <button data-view="notas">Notas fiscais</button>
+        </div>
+        <input type="text" id="searchBox" placeholder="Buscar por nome, fantasia, CPF/CNPJ, tipo, nº do PEG ou da nota...">
+        <span class="count-tag" id="rowCount"></span>
+        <button class="btn-refresh" id="btnCsv">⬇ Exportar CSV (filtrado)</button>
+      </div>
+      <div class="table-wrap"><table id="tblBase"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+</main>
+
+<footer>Dashboard gerado a partir dos relatórios SQL de prestadores, PEG e notas fiscais · CTI | CompesaPrev</footer>
+
+<script>
+// ============================================================
+//  CONFIGURAÇÃO
+// ============================================================
+// Planilhas lidas automaticamente da pasta "dados/". O painel reconhece
+// cada relatório pelas COLUNAS, então no upload manual o nome do arquivo
+// não importa — dá para selecionar os 4 de uma vez.
+const ARQUIVOS = {
+  cadastro:{arquivo:'dados/prestadores.xlsx',    rotulo:'Cadastro de prestadores', colunas:['HANDLE_PRESTADOR','CPF_CNPJ']},
+  pegSit:  {arquivo:'dados/peg_situacao.xlsx',   rotulo:'PEG com situação',        colunas:['PEG','SITUACAO_PEG']},
+  pegQtd:  {arquivo:'dados/peg_quantidade.xlsx', rotulo:'PEG e guias (quantidade)',colunas:['QTD_PEG','QTD_GUIA']},
+  notas:   {arquivo:'dados/notas_fiscais.xlsx',  rotulo:'Notas fiscais',           colunas:['NUMERO_NOTA','VALOR_NOTA']}
+};
+
+// Ordem do fluxo do PEG (DECODE de SAM_PEG.SITUACAO)
+const SIT_ORDEM   = ['DIGITAÇÃO','CONFERÊNCIA','VERIFICAÇÃO','PRONTO','FATURADO','DEVOLVIDO','CANCELADO'];
+const SIT_ABERTO  = ['digitacao','conferencia','verificacao','pronto'];   // ainda não faturado
+const SIT_FATURADO= 'faturado';
+
+// Categorias que normalmente mandam nota fiscal (tabela "Fornecedores com PEG e sem NF")
+const CATEGORIAS_COM_NF = ['FORNECEDOR'];
+
+// Data de atualização exibida no topo = último commit que mexeu na pasta dados/.
+// Vazio = descobre o repositório pela URL do GitHub Pages (usuario.github.io/REPOSITORIO/).
+// Se o painel ficar num lugar diferente, preencha: 'Julia-Albertim/NomeDoRepositorio'
+const GITHUB_REPO = '';
+// Acima de quantos dias sem atualizar o topo mostra um aviso
+const DIAS_ALERTA_DESATUALIZADO = 35;
+
+// ============================================================
+const COLORS = {azul:'#2F4A97',azulEscuro:'#1F3266',azulClaro:'#0098DB',verde:'#8FC74A',
+  verdeEscuro:'#6FA334',vermelho:'#D64550',amarelo:'#E5A93C',roxo:'#7B4FB3',cinza:'#9AA3B8',laranja:'#E07A2E'};
+const PALETA = [COLORS.azul,COLORS.verde,COLORS.azulClaro,COLORS.amarelo,COLORS.roxo,
+  COLORS.laranja,COLORS.verdeEscuro,COLORS.vermelho,COLORS.cinza,'#4C8A2A','#1B72A8','#B93A44','#5C6478'];
+
+const SIT_COLORS = {'DIGITAÇÃO':COLORS.cinza,'CONFERÊNCIA':COLORS.azulClaro,'VERIFICAÇÃO':COLORS.amarelo,
+  'PRONTO':COLORS.roxo,'FATURADO':COLORS.verde,'DEVOLVIDO':COLORS.laranja,'CANCELADO':COLORS.vermelho};
+const MOV_ORDEM = ['PEG e Nota Fiscal','Somente PEG','Somente Nota Fiscal','Sem envio'];
+const MOV_COLORS = {'PEG e Nota Fiscal':COLORS.verdeEscuro,'Somente PEG':COLORS.azul,
+  'Somente Nota Fiscal':COLORS.roxo,'Sem envio':'#C9CFDC'};
+const MOV_BADGE = {'PEG e Nota Fiscal':'b-verde','Somente PEG':'b-azul','Somente Nota Fiscal':'b-roxo','Sem envio':'b-cinza'};
+const SIT_BADGE = {'FATURADO':'b-verde','VERIFICAÇÃO':'b-amarelo','CONFERÊNCIA':'b-azul','PRONTO':'b-roxo',
+  'DIGITAÇÃO':'b-cinza','CANCELADO':'b-vermelho','DEVOLVIDO':'b-vermelho'};
+
+Chart.defaults.font.family = "'Segoe UI',Roboto,Arial,sans-serif";
+Chart.defaults.font.size = 12;
+Chart.defaults.color = '#6B7690';
+Chart.defaults.locale = 'pt-BR';
+
+// ============ utilidades ============
+function stripAccents(s){ return (''+s).normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function labelKey(v){ return stripAccents((''+(v??'')).trim()).toLowerCase(); }
+function txt(v){ return (v===null||v===undefined)?'':(''+v).trim(); }
+function esc(s){ return (''+(s??'')).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function shortLabel(s,n){ s=''+s; return s.length>n?s.slice(0,n-1)+'…':s; }
+const nf0=new Intl.NumberFormat('pt-BR');
+const nfBRL=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const nfBRLc=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',notation:'compact',maximumFractionDigits:1});
+function fmtN(v){ return nf0.format(v||0); }
+function fmtBRL(v){ return nfBRL.format(v||0); }
+function pct(a,b){ return b?Math.round(a/b*1000)/10:0; }
+function fmtPct(a,b){ return b?pct(a,b).toLocaleString('pt-BR')+'%':'—'; }
+
+function toDate(v){
+  if(v===null||v===undefined||v==='') return null;
+  if(v instanceof Date) return isNaN(v.getTime())?null:v;
+  if(typeof v==='number'){ const d=XLSX.SSF.parse_date_code(v); return d?new Date(d.y,d.m-1,d.d):null; }
+  const m=(''+v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
+  const d=new Date(v); return isNaN(d.getTime())?null:d;
+}
+function ym(d){ return d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'):null; }
+function ymd(d){ return d?ym(d)+'-'+String(d.getDate()).padStart(2,'0'):null; }
+function fmtData(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-'); return d+'/'+m+'/'+y; }
+function fmtComp(ymStr){ if(!ymStr) return '—'; const [y,m]=ymStr.split('-'); return m+'/'+y; }
+function fmtMesCurto(ymStr){ if(!ymStr) return '—'; const [y,m]=ymStr.split('-');
+  return ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+m-1]+'/'+y.slice(2); }
+// "07/2026" -> "2026-07"
+function parseMesAno(v,fallbackDate){
+  const m=txt(v).match(/^(\d{1,2})\/(\d{4})$/);
+  if(m) return m[2]+'-'+m[1].padStart(2,'0');
+  return ym(fallbackDate);
+}
+function mesesEntre(a,b){ const [ya,ma]=a.split('-').map(Number),[yb,mb]=b.split('-').map(Number); return (yb-ya)*12+(mb-ma); }
+
+// CPF/CNPJ vem como número (perde zeros à esquerda). Guardamos só os dígitos.
+function docKey(v){ if(v===null||v===undefined) return ''; const s=(typeof v==='number')?String(Math.round(v)):txt(v);
+  return s.replace(/\D/g,'').replace(/^0+/,'')||'0'; }
+function fmtDoc(key,categoria){
+  const pf=/\bPF\b/.test(categoria||'') || (key.length<=11 && !/PJ|FORNECEDOR/.test(categoria||''));
+  if(pf){ const d=key.padStart(11,'0'); return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4'); }
+  const d=key.padStart(14,'0'); return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+}
+function normSituacao(v){
+  const k=labelKey(v); const hit=SIT_ORDEM.find(s=>labelKey(s)===k);
+  return hit||(txt(v).toUpperCase()||'—');
+}
+function sitAberta(s){ return SIT_ABERTO.includes(labelKey(s)); }
+function sitFaturada(s){ return labelKey(s)===SIT_FATURADO; }
+
+// ============ estado ============
+let SOURCES = {cadastro:null,pegSit:null,pegQtd:null,notas:null};   // linhas brutas por relatório
+let SOURCE_INFO = {};                                               // origem/qtd de cada relatório
+let PRESTS=[], PREST_MAP={}, PEGS=[], QTDS=[], NOTAS=[], ALL_MESES=[];
+
+// ============ montagem do modelo ============
+function buildModel(){
+  PREST_MAP={}; PRESTS=[]; PEGS=[]; QTDS=[]; NOTAS=[];
+  const add=(r,fromCadastro)=>{
+    const k=docKey(r.CPF_CNPJ); if(!k) return null;
+    if(PREST_MAP[k]) return PREST_MAP[k];
+    const p={cpf:k, handle:r.HANDLE_PRESTADOR??null,
+      nome:txt(r.NOME_PRESTADOR)||'—', fantasia:txt(r.NOME_FANTASIA??r.NOME_FANTASIA_PRESTADOR),
+      categoria:txt(r.CATEGORIA_PRESTADOR)||'—', tipo:txt(r.TIPO_PRESTADOR)||'—', noCadastro:fromCadastro};
+    p.doc=fmtDoc(k,p.categoria);
+    PREST_MAP[k]=p; PRESTS.push(p); return p;
+  };
+  (SOURCES.cadastro||[]).forEach(r=>add(r,true));
+  (SOURCES.pegSit||[]).forEach(r=>{
+    const p=add(r,false); if(!p) return;
+    const d=toDate(r.DATA_CONTABIL);
+    PEGS.push({cpf:p.cpf, peg:r.PEG, data:ymd(d), mes:parseMesAno(r.MES_ANO,d), situacao:normSituacao(r.SITUACAO_PEG)});
+  });
+  (SOURCES.pegQtd||[]).forEach(r=>{
+    const p=add(r,false); if(!p) return;
+    QTDS.push({cpf:p.cpf, mes:parseMesAno(r.MES_ANO,null), pegs:+r.QTD_PEG||0, guias:+r.QTD_GUIA||0});
+  });
+  (SOURCES.notas||[]).forEach(r=>{
+    const p=add(r,false); if(!p) return;
+    const em=toDate(r.DATA_EMISSAO);
+    NOTAS.push({cpf:p.cpf, numero:r.NUMERO_NOTA, emissao:ymd(em), mesEmissao:ym(em),
+      mes:parseMesAno(r.MES_ANO,em), valor:+r.VALOR_NOTA||0});
+  });
+  // rótulo curto para gráficos: fantasia (ou nome); se repetir, acrescenta o final do documento
+  const cont={};
+  PRESTS.forEach(p=>{ p.rotulo=p.fantasia||p.nome; cont[p.rotulo]=(cont[p.rotulo]||0)+1; });
+  PRESTS.forEach(p=>{ if(cont[p.rotulo]>1) p.rotulo+=' ('+p.doc.slice(-7)+')'; });
+  ALL_MESES=[...new Set([...PEGS,...QTDS,...NOTAS].map(r=>r.mes).filter(Boolean))].sort();
+  document.getElementById('competencias').textContent=(ALL_MESES.length
+    ? (ALL_MESES.length===1?fmtComp(ALL_MESES[0]):fmtComp(ALL_MESES[0])+' a '+fmtComp(ALL_MESES[ALL_MESES.length-1])) : '—');
+}
+
+// ============ filtros ============
+const FIELDS=['mes','categoria','tipo','situacao','movimento'];
+const FIELD_LABELS={mes:'Competência',categoria:'Categoria',tipo:'Tipo de prestador',situacao:'Situação do PEG',movimento:'Movimento'};
+const FIELD_DISPLAY={mes:fmtComp};
+let filters={}; FIELDS.forEach(f=>filters[f]=new Set());
+let filtersOpen=false;
+
+function uniqueValues(field){
+  if(field==='mes') return ALL_MESES;
+  if(field==='movimento') return MOV_ORDEM;
+  if(field==='situacao'){ const s=new Set(PEGS.map(p=>p.situacao));
+    return [...SIT_ORDEM.filter(x=>s.has(x)),...[...s].filter(x=>!SIT_ORDEM.includes(x))]; }
+  const c={}; PRESTS.forEach(p=>c[p[field]]=(c[p[field]]||0)+1);
+  return Object.keys(c).sort((a,b)=>c[b]-c[a]);
+}
+function showVal(field,v){ return FIELD_DISPLAY[field]?FIELD_DISPLAY[field](v):v; }
+function toggleFilter(field,value){ filters[field].has(value)?filters[field].delete(value):filters[field].add(value); renderAll(); }
+function countActiveFilters(){ return FIELDS.reduce((a,f)=>a+filters[f].size,0); }
+function clearFilters(){ FIELDS.forEach(f=>filters[f].clear()); renderAll(); }
+
+function buildFilterPanel(){
+  const panel=document.getElementById('filterPanel'); panel.innerHTML='';
+  const head=document.createElement('div'); head.className='filters-head';
+  const left=document.createElement('div'); left.className='filters-head-left';
+  const n=countActiveFilters();
+  const toggle=document.createElement('button');
+  toggle.className='filters-toggle'+(filtersOpen?' open':'');
+  toggle.innerHTML='🔍 Filtros'+(n?` <span class="cnt">${n}</span>`:'')+' <span class="chev">▾</span>';
+  toggle.onclick=()=>{ filtersOpen=!filtersOpen; buildFilterPanel(); };
+  left.appendChild(toggle);
+  const summary=document.createElement('div'); summary.className='filters-summary';
+  if(!n){ summary.innerHTML='<span class="filters-summary-empty">Nenhum filtro ativo — mostrando tudo</span>'; }
+  else FIELDS.forEach(field=>filters[field].forEach(val=>{
+    const chip=document.createElement('span'); chip.className='mini-chip';
+    chip.innerHTML=`${esc(FIELD_LABELS[field])}: ${esc(showVal(field,val))}`;
+    const x=document.createElement('button'); x.textContent='✕'; x.title='Remover filtro';
+    x.onclick=()=>toggleFilter(field,val); chip.appendChild(x); summary.appendChild(chip);
+  }));
+  left.appendChild(summary); head.appendChild(left);
+  if(n){ const c=document.createElement('button'); c.className='clear'; c.textContent='Limpar filtros'; c.onclick=clearFilters; head.appendChild(c); }
+  panel.appendChild(head);
+
+  const body=document.createElement('div'); body.className='filters-body'+(filtersOpen?' open':'');
+  FIELDS.forEach(field=>{
+    const vals=uniqueValues(field); if(!vals.length) return;
+    const g=document.createElement('div'); g.className='filter-group';
+    g.innerHTML=`<h4>${FIELD_LABELS[field]}${filters[field].size?` <span class="cnt">${filters[field].size}</span>`:''}</h4>`;
+    const row=document.createElement('div'); row.className='chip-row';
+    vals.forEach(val=>{
+      const c=document.createElement('div'); c.className='chip'+(filters[field].has(val)?' active':'');
+      c.textContent=showVal(field,val); c.title=showVal(field,val); c.onclick=()=>toggleFilter(field,val);
+      row.appendChild(c);
+    });
+    g.appendChild(row); body.appendChild(g);
+  });
+  panel.appendChild(body);
+}
+
+// ============ recorte (aplica filtros e agrega por prestador) ============
+function computeView(){
+  const mesOK=m=>!filters.mes.size||filters.mes.has(m);
+  const sitOK=s=>!filters.situacao.size||filters.situacao.has(s);
+  const usaDetalhe=PEGS.length>0;
+  const meses=filters.mes.size?ALL_MESES.filter(m=>filters.mes.has(m)):ALL_MESES;
+  let pegs=PEGS.filter(r=>mesOK(r.mes)&&sitOK(r.situacao));
+  let qtds=QTDS.filter(r=>mesOK(r.mes));
+  let notas=NOTAS.filter(r=>mesOK(r.mes));
+
+  const agg={};
+  const A=k=>agg[k]||(agg[k]={peg:0,guia:0,pegMes:{},guiaMes:{},sit:{},aberto:0,faturado:0,nNotas:0,valorNotas:0});
+  if(usaDetalhe) pegs.forEach(r=>{ const a=A(r.cpf); a.peg++; a.pegMes[r.mes]=(a.pegMes[r.mes]||0)+1;
+    a.sit[r.situacao]=(a.sit[r.situacao]||0)+1; if(sitAberta(r.situacao)) a.aberto++; if(sitFaturada(r.situacao)) a.faturado++; });
+  qtds.forEach(r=>{ const a=A(r.cpf);
+    if(!usaDetalhe){ a.peg+=r.pegs; a.pegMes[r.mes]=(a.pegMes[r.mes]||0)+r.pegs; }
+    if(!usaDetalhe||a.pegMes[r.mes]){ a.guia+=r.guias; a.guiaMes[r.mes]=(a.guiaMes[r.mes]||0)+r.guias; } });
+  notas.forEach(r=>{ const a=A(r.cpf); a.nNotas++; a.valorNotas+=r.valor; });
+
+  const vazio={peg:0,guia:0,pegMes:{},guiaMes:{},sit:{},aberto:0,faturado:0,nNotas:0,valorNotas:0};
+  const prests=[];
+  PRESTS.forEach(p=>{
+    if(filters.categoria.size&&!filters.categoria.has(p.categoria)) return;
+    if(filters.tipo.size&&!filters.tipo.has(p.tipo)) return;
+    const a=agg[p.cpf]||vazio;
+    const movimento=a.peg>0?(a.nNotas>0?'PEG e Nota Fiscal':'Somente PEG'):(a.nNotas>0?'Somente Nota Fiscal':'Sem envio');
+    if(filters.movimento.size&&!filters.movimento.has(movimento)) return;
+    let regularidade=null;
+    if(a.peg>0&&meses.length>=2){
+      const env=meses.filter(m=>a.pegMes[m]);
+      regularidade=env.length===meses.length?'Enviou em todas as competências'
+        :env.length===1?'Só em '+fmtComp(env[0]):'Em parte das competências';
+    }
+    prests.push(Object.assign({},p,a,{movimento,regularidade}));
+  });
+  const set=new Set(prests.map(p=>p.cpf));
+  pegs=pegs.filter(r=>set.has(r.cpf)); qtds=qtds.filter(r=>set.has(r.cpf)); notas=notas.filter(r=>set.has(r.cpf));
+  return {prests,pegs,qtds,notas,meses,usaDetalhe};
+}
+
+// ============ KPIs ============
+function renderKpis(V){
+  const temCad=!!SOURCES.cadastro;
+  const cad=V.prests.filter(p=>p.noCadastro).length;
+  const enviaram=V.prests.filter(p=>p.peg>0).length;
+  const semEnvio=V.prests.filter(p=>p.movimento==='Sem envio').length;
+  const totPeg=V.prests.reduce((a,p)=>a+p.peg,0);
+  const totGuia=V.prests.reduce((a,p)=>a+p.guia,0);
+  const fat=V.pegs.filter(r=>sitFaturada(r.situacao)).length;
+  const aberto=V.pegs.filter(r=>sitAberta(r.situacao)).length;
+  const valorNf=V.notas.reduce((a,n)=>a+n.valor,0);
+  const prestNf=new Set(V.notas.map(n=>n.cpf)).size;
+  const k=[
+    ['neutro',temCad?fmtN(cad):'—','Prestadores no cadastro',temCad?'no recorte dos filtros':'relatório não carregado'],
+    ['ok',fmtN(enviaram),'Enviaram PEG',temCad?fmtPct(enviaram,V.prests.length)+' do recorte':''],
+    ['bad',temCad?fmtN(semEnvio):'—','Sem nenhum envio',temCad?fmtPct(semEnvio,V.prests.length)+' do recorte':''],
+    ['info',fmtN(totPeg),'PEGs no período',V.meses.length+' competência(s)'],
+    ['info',SOURCES.pegQtd?fmtN(totGuia):'—','Guias nos PEGs',totPeg?'média de '+(totGuia/totPeg).toLocaleString('pt-BR',{maximumFractionDigits:1})+' por PEG':''],
+    ['ok',V.usaDetalhe?fmtPct(fat,V.pegs.length):'—','PEGs faturados',V.usaDetalhe?fmtN(fat)+' PEGs':''],
+    ['warn',V.usaDetalhe?fmtN(aberto):'—','PEGs em aberto',V.usaDetalhe?fmtPct(aberto,V.pegs.length)+' ainda não faturados':''],
+    ['roxo',fmtN(V.notas.length),'Notas fiscais',fmtBRL(valorNf)+' · '+prestNf+' prestador(es)']
+  ];
+  document.getElementById('kpiRow').innerHTML=k.map(([c,num,lbl,sub])=>
+    `<div class="kpi ${c}"><div class="num">${num}</div><div class="lbl">${lbl}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`).join('');
+}
+
+// ============ charts ============
+let charts={};
+function drawChart(key,canvasId,config){
+  if(charts[key]) charts[key].destroy();
+  const el=document.getElementById(canvasId); if(!el) return;
+  charts[key]=new Chart(el,config);
+}
+function clickFilter(field,labelToValue){
+  return (evt,els,chart)=>{ if(!els.length) return; const l=chart.data.labels[els[0].index];
+    toggleFilter(field,labelToValue?labelToValue(l):l); };
+}
+function clickDataset(field){  // para gráficos cujo dataset é o valor filtrável
+  return (evt,els,chart)=>{ if(els.length) toggleFilter(field,chart.data.datasets[els[0].datasetIndex].label); };
+}
+const LEG={position:'bottom',labels:{boxWidth:12,padding:10}};
+const OPT_BAR={plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}};
+const OPT_BARH={indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}};
+const OPT_STACK={plugins:{legend:LEG},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{precision:0}}}};
+const OPT_STACKH={indexAxis:'y',plugins:{legend:LEG},scales:{x:{stacked:true,beginAtZero:true,ticks:{precision:0}},y:{stacked:true}}};
+const OPT_DONUT={plugins:{legend:LEG}};
+function yTicks(n){ return {ticks:{autoSkip:false,callback:function(v){return shortLabel(this.getLabelForValue(v),n);}}}; }
+function donutTooltip(fmt){ return {callbacks:{label:c=>{ const t=c.dataset.data.reduce((a,b)=>a+b,0);
+  return ' '+c.label+': '+(fmt?fmt(c.parsed):fmtN(c.parsed))+' ('+fmtPct(c.parsed,t)+')'; }}}; }
+function sitOrdenadas(lista){ const s=new Set(lista); return [...SIT_ORDEM.filter(x=>s.has(x)),...[...s].filter(x=>!SIT_ORDEM.includes(x))]; }
+
+function renderCharts(V){
+  const P=V.prests;
+
+  // --- Visão geral ---
+  const mov={}; P.forEach(p=>mov[p.movimento]=(mov[p.movimento]||0)+1);
+  const movL=MOV_ORDEM.filter(m=>mov[m]);
+  drawChart('mov','chMovimento',{type:'doughnut',
+    data:{labels:movL,datasets:[{data:movL.map(l=>mov[l]),backgroundColor:movL.map(l=>MOV_COLORS[l])}]},
+    options:{...OPT_DONUT,plugins:{...OPT_DONUT.plugins,tooltip:donutTooltip()},onClick:clickFilter('movimento')}});
+
+  const pegMes={},guiaMes={};
+  P.forEach(p=>{ Object.entries(p.pegMes).forEach(([m,v])=>pegMes[m]=(pegMes[m]||0)+v);
+                 Object.entries(p.guiaMes).forEach(([m,v])=>guiaMes[m]=(guiaMes[m]||0)+v); });
+  const ds=[{label:'PEGs',data:V.meses.map(m=>pegMes[m]||0),backgroundColor:COLORS.azul,borderRadius:5,maxBarThickness:46,yAxisID:'y'}];
+  if(SOURCES.pegQtd) ds.push({label:'Guias',data:V.meses.map(m=>guiaMes[m]||0),backgroundColor:COLORS.verde,borderRadius:5,maxBarThickness:46,yAxisID:'y2'});
+  drawChart('comp','chCompetencia',{type:'bar',data:{labels:V.meses.map(fmtComp),datasets:ds},
+    options:{plugins:{legend:LEG},onClick:clickFilter('mes',l=>ALL_MESES.find(m=>fmtComp(m)===l)),
+      scales:{y:{beginAtZero:true,ticks:{precision:0},title:{display:true,text:'PEGs'}},
+              y2:{display:!!SOURCES.pegQtd,position:'right',beginAtZero:true,grid:{drawOnChartArea:false},ticks:{precision:0},title:{display:true,text:'Guias'}}}}});
+
+  const sit={}; V.pegs.forEach(r=>sit[r.situacao]=(sit[r.situacao]||0)+1);
+  const sitL=sitOrdenadas(Object.keys(sit));
+  drawChart('sit','chSituacao',{type:'doughnut',
+    data:{labels:sitL,datasets:[{data:sitL.map(l=>sit[l]),backgroundColor:sitL.map(l=>SIT_COLORS[l]||COLORS.cinza)}]},
+    options:{...OPT_DONUT,plugins:{...OPT_DONUT.plugins,tooltip:donutTooltip()},onClick:clickFilter('situacao')}});
+
+  const stackMov=(campo)=>{
+    const c={}; P.forEach(p=>{ (c[p[campo]]=c[p[campo]]||{_t:0}); c[p[campo]][p.movimento]=(c[p[campo]][p.movimento]||0)+1; c[p[campo]]._t++; });
+    const labels=Object.keys(c).sort((a,b)=>c[b]._t-c[a]._t);
+    return {labels,datasets:MOV_ORDEM.filter(m=>labels.some(l=>c[l][m])).map(m=>({label:m,
+      data:labels.map(l=>c[l][m]||0),backgroundColor:MOV_COLORS[m],borderRadius:3}))};
+  };
+  drawChart('tipoMov','chTipoMov',{type:'bar',data:stackMov('tipo'),
+    options:{...OPT_STACKH,onClick:clickFilter('tipo'),scales:{...OPT_STACKH.scales,y:{stacked:true,...yTicks(26)}}}});
+  drawChart('catMov','chCatMov',{type:'bar',data:stackMov('categoria'),
+    options:{...OPT_STACKH,onClick:clickFilter('categoria'),scales:{...OPT_STACKH.scales,y:{stacked:true,...yTicks(26)}}}});
+
+  // --- Cadastro x envio ---
+  const ad={}; P.filter(p=>p.noCadastro).forEach(p=>{ (ad[p.tipo]=ad[p.tipo]||{t:0,e:0}); ad[p.tipo].t++; if(p.peg>0) ad[p.tipo].e++; });
+  const adL=Object.keys(ad).sort((a,b)=>pct(ad[b].e,ad[b].t)-pct(ad[a].e,ad[a].t)||ad[b].t-ad[a].t);
+  drawChart('adesao','chAdesaoTipo',{type:'bar',
+    data:{labels:adL,datasets:[{data:adL.map(l=>pct(ad[l].e,ad[l].t)),borderRadius:4,
+      backgroundColor:adL.map(l=>{const v=pct(ad[l].e,ad[l].t); return v>=70?COLORS.verdeEscuro:v>=40?COLORS.amarelo:COLORS.vermelho;})}]},
+    options:{...OPT_BARH,onClick:clickFilter('tipo'),
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const x=ad[c.label]; return ` ${fmtPct(x.e,x.t)} — ${x.e} de ${x.t} prestadores enviaram PEG`;}}}},
+      scales:{x:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}},y:yTicks(26)}}});
+
+  const reg={}; P.forEach(p=>{ if(p.regularidade) reg[p.regularidade]=(reg[p.regularidade]||0)+1; });
+  const regL=Object.keys(reg).sort((a,b)=>a.startsWith('Enviou')?-1:b.startsWith('Enviou')?1:a.localeCompare(b));
+  const temReg=V.meses.length>=2&&regL.length;
+  document.getElementById('chRegularidade').style.display=temReg?'':'none';
+  document.getElementById('regularidadeVazio').style.display=temReg?'none':'';
+  const regCores=[COLORS.verdeEscuro,COLORS.azulClaro,COLORS.amarelo,COLORS.roxo,COLORS.laranja];
+  drawChart('reg','chRegularidade',{type:'doughnut',
+    data:{labels:regL,datasets:[{data:regL.map(l=>reg[l]),backgroundColor:regL.map((l,i)=>regCores[i%regCores.length])}]},
+    options:{...OPT_DONUT,plugins:{...OPT_DONUT.plugins,tooltip:donutTooltip()}}});
+
+  // --- PEG & situação ---
+  const sm={}; V.pegs.forEach(r=>{ (sm[r.mes]=sm[r.mes]||{}); sm[r.mes][r.situacao]=(sm[r.mes][r.situacao]||0)+1; });
+  drawChart('sitMes','chSitMes',{type:'bar',
+    data:{labels:V.meses.map(fmtComp),datasets:sitL.map(s=>({label:s,data:V.meses.map(m=>(sm[m]&&sm[m][s])||0),
+      backgroundColor:SIT_COLORS[s]||COLORS.cinza,borderRadius:3,maxBarThickness:60}))},
+    options:{...OPT_STACK,onClick:clickDataset('situacao')}});
+
+  const dia={}; V.pegs.forEach(r=>{ if(r.data) dia[r.data]=(dia[r.data]||0)+1; });
+  const diaL=Object.keys(dia).sort();
+  drawChart('dia','chDia',{type:'bar',
+    data:{labels:diaL.map(d=>fmtData(d).slice(0,5)),datasets:[{data:diaL.map(d=>dia[d]),borderRadius:3,
+      backgroundColor:diaL.map(d=>PALETA[V.meses.indexOf(d.slice(0,7))%PALETA.length]||COLORS.azul)}]},
+    options:{...OPT_BAR,plugins:{legend:{display:false},tooltip:{callbacks:{title:c=>fmtData(diaL[c[0].dataIndex])}}}}});
+
+  const topPeg=[...P].filter(p=>p.peg>0).sort((a,b)=>b.peg-a.peg).slice(0,15);
+  const topDs=V.usaDetalhe
+    ? sitOrdenadas(topPeg.flatMap(p=>Object.keys(p.sit))).map(s=>({label:s,data:topPeg.map(p=>p.sit[s]||0),backgroundColor:SIT_COLORS[s]||COLORS.cinza,borderRadius:2}))
+    : [{label:'PEGs',data:topPeg.map(p=>p.peg),backgroundColor:COLORS.azul,borderRadius:4}];
+  drawChart('topPeg','chTopPeg',{type:'bar',data:{labels:topPeg.map(p=>p.rotulo),datasets:topDs},
+    options:{...OPT_STACKH,plugins:{legend:{...LEG,display:V.usaDetalhe}},scales:{...OPT_STACKH.scales,y:{stacked:true,...yTicks(28)}}}});
+
+  const topGuia=[...P].filter(p=>p.guia>0).sort((a,b)=>b.guia-a.guia).slice(0,15);
+  drawChart('topGuia','chTopGuia',{type:'bar',
+    data:{labels:topGuia.map(p=>p.rotulo),datasets:[{data:topGuia.map(p=>p.guia),backgroundColor:COLORS.verdeEscuro,borderRadius:4}]},
+    options:{...OPT_BARH,scales:{...OPT_BARH.scales,y:yTicks(28)}}});
+
+  const ts={}; V.pegs.forEach(r=>{ const t=PREST_MAP[r.cpf].tipo; (ts[t]=ts[t]||{_t:0}); ts[t][r.situacao]=(ts[t][r.situacao]||0)+1; ts[t]._t++; });
+  const tsL=Object.keys(ts).sort((a,b)=>ts[b]._t-ts[a]._t);
+  drawChart('tipoSit','chTipoSit',{type:'bar',
+    data:{labels:tsL,datasets:sitL.map(s=>({label:s,data:tsL.map(t=>ts[t][s]||0),backgroundColor:SIT_COLORS[s]||COLORS.cinza,borderRadius:3}))},
+    options:{...OPT_STACKH,onClick:clickFilter('tipo'),scales:{...OPT_STACKH.scales,y:{stacked:true,...yTicks(34)}}}});
+
+  // --- Notas fiscais ---
+  const vp={}; V.notas.forEach(n=>vp[n.cpf]=(vp[n.cpf]||0)+n.valor);
+  const vpL=Object.keys(vp).sort((a,b)=>vp[b]-vp[a]).slice(0,15);
+  const moneyAxis={beginAtZero:true,ticks:{callback:v=>nfBRLc.format(v)}};
+  drawChart('nfValor','chNfValor',{type:'bar',
+    data:{labels:vpL.map(k=>PREST_MAP[k].rotulo),datasets:[{data:vpL.map(k=>vp[k]),backgroundColor:COLORS.roxo,borderRadius:4}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtBRL(c.parsed.x)}}},
+      scales:{x:moneyAxis,y:yTicks(28)}}});
+
+  const vt={}; V.notas.forEach(n=>{ const t=PREST_MAP[n.cpf].tipo; vt[t]=(vt[t]||0)+n.valor; });
+  const vtL=Object.keys(vt).sort((a,b)=>vt[b]-vt[a]);
+  drawChart('nfTipo','chNfTipo',{type:'doughnut',
+    data:{labels:vtL,datasets:[{data:vtL.map(l=>vt[l]),backgroundColor:vtL.map((l,i)=>PALETA[i%PALETA.length])}]},
+    options:{...OPT_DONUT,plugins:{...OPT_DONUT.plugins,tooltip:donutTooltip(fmtBRL)},onClick:clickFilter('tipo')}});
+
+  const em={},emV={}; V.notas.forEach(n=>{ const m=n.mesEmissao||'—'; em[m]=(em[m]||0)+1; emV[m]=(emV[m]||0)+n.valor; });
+  const emL=Object.keys(em).sort();
+  drawChart('nfEm','chNfEmissao',{type:'bar',
+    data:{labels:emL.map(m=>m==='—'?'Sem data':fmtMesCurto(m)),datasets:[{data:emL.map(m=>em[m]),backgroundColor:COLORS.azulClaro,borderRadius:5,maxBarThickness:50}]},
+    options:{...OPT_BAR,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.parsed.y} nota(s) · ${fmtBRL(emV[emL[c.dataIndex]])}`}}}}});
+
+  const def={}; V.notas.forEach(n=>{ def[defasagemLabel(n)]=(def[defasagemLabel(n)]||0)+1; });
+  const defOrd=['Mesmo mês','1 mês depois','2 meses depois','3 meses ou mais','Sem data'];
+  const defL=defOrd.filter(d=>def[d]);
+  const defCor={'Mesmo mês':COLORS.verdeEscuro,'1 mês depois':COLORS.azulClaro,'2 meses depois':COLORS.amarelo,'3 meses ou mais':COLORS.vermelho,'Sem data':COLORS.cinza};
+  drawChart('nfDef','chNfDefasagem',{type:'bar',
+    data:{labels:defL,datasets:[{data:defL.map(d=>def[d]),backgroundColor:defL.map(d=>defCor[d]),borderRadius:5,maxBarThickness:60}]},
+    options:OPT_BAR});
+}
+function defasagem(n){ return (n.mesEmissao&&n.mes)?mesesEntre(n.mesEmissao,n.mes):null; }
+function defasagemLabel(n){ const d=defasagem(n); if(d===null) return 'Sem data'; if(d<=0) return 'Mesmo mês';
+  if(d===1) return '1 mês depois'; if(d===2) return '2 meses depois'; return '3 meses ou mais'; }
+
+// ============ tabelas ============
+function prestCell(p){ return `${esc(p.nome)}${p.fantasia&&p.fantasia!==p.nome?`<span class="fant">${esc(p.fantasia)}</span>`:''}`; }
+function badge(cls,t){ return `<span class="badge ${cls}">${esc(t)}</span>`; }
+function renderTable(id,cols,rows,opts={}){
+  const t=document.getElementById(id);
+  t.querySelector('thead').innerHTML='<tr>'+cols.map(c=>`<th class="${c.num?'num':''}">${c.h}</th>`).join('')+'</tr>';
+  const lim=opts.limit||rows.length;
+  let html=rows.slice(0,lim).map(r=>'<tr>'+cols.map(c=>`<td class="${c.num?'num':''} ${c.cls||''}">${c.v(r)}</td>`).join('')+'</tr>').join('');
+  if(!rows.length) html=`<tr><td colspan="${cols.length}" class="empty-state">${opts.vazio||'Nada a mostrar neste recorte.'}</td></tr>`;
+  else if(rows.length>lim) html+=`<tr><td colspan="${cols.length}" class="empty-state">Mostrando ${fmtN(lim)} de ${fmtN(rows.length)} linhas — use a busca ou exporte o CSV para ver tudo.</td></tr>`;
+  if(opts.total&&rows.length) html+='<tr class="total">'+cols.map(c=>`<td class="${c.num?'num':''}">${c.total!==undefined?c.total:''}</td>`).join('')+'</tr>';
+  t.querySelector('tbody').innerHTML=html;
+}
+const COL_PREST={h:'Prestador',v:prestCell};
+const COL_DOC={h:'CPF / CNPJ',v:p=>p.doc,cls:'doc'};
+const COL_TIPO={h:'Tipo',v:p=>esc(p.tipo)};
+const COL_CAT={h:'Categoria',v:p=>esc(p.categoria)};
+
+function renderTables(V){
+  const P=V.prests;
+  // --- deixaram / passaram a enviar ---
+  const n=V.meses.length;
+  if(n>=2){
+    const ant=V.meses[n-2], ult=V.meses[n-1];
+    document.getElementById('ttlDeixaram').textContent=`Deixaram de Enviar em ${fmtComp(ult)}`;
+    document.getElementById('hintDeixaram').textContent=`Enviaram PEG em ${fmtComp(ant)} e nenhum em ${fmtComp(ult)}`;
+    document.getElementById('ttlPassaram').textContent=`Passaram a Enviar em ${fmtComp(ult)}`;
+    document.getElementById('hintPassaram').textContent=`Enviaram PEG em ${fmtComp(ult)} sem ter enviado em ${fmtComp(ant)}`;
+    const deix=P.filter(p=>p.pegMes[ant]&&!p.pegMes[ult]).sort((a,b)=>b.pegMes[ant]-a.pegMes[ant]);
+    const pass=P.filter(p=>p.pegMes[ult]&&!p.pegMes[ant]).sort((a,b)=>b.pegMes[ult]-a.pegMes[ult]);
+    document.getElementById('cntDeixaram').textContent=fmtN(deix.length)+' prestador(es)';
+    document.getElementById('cntPassaram').textContent=fmtN(pass.length)+' prestador(es)';
+    renderTable('tblDeixaram',[COL_PREST,COL_TIPO,{h:'PEGs '+fmtComp(ant),num:1,v:p=>fmtN(p.pegMes[ant])},
+      {h:'Guias '+fmtComp(ant),num:1,v:p=>SOURCES.pegQtd?fmtN(p.guiaMes[ant]):'—'}],deix);
+    renderTable('tblPassaram',[COL_PREST,COL_TIPO,{h:'PEGs '+fmtComp(ult),num:1,v:p=>fmtN(p.pegMes[ult])},
+      {h:'Guias '+fmtComp(ult),num:1,v:p=>SOURCES.pegQtd?fmtN(p.guiaMes[ult]):'—'}],pass);
+  } else {
+    ['Deixaram','Passaram'].forEach(k=>{ document.getElementById('cnt'+k).textContent='';
+      renderTable('tbl'+k,[COL_PREST],[],{vazio:'Selecione ao menos duas competências para comparar.'}); });
+  }
+  // --- sem envio ---
+  const sem=P.filter(p=>p.movimento==='Sem envio'&&p.noCadastro).sort((a,b)=>a.tipo.localeCompare(b.tipo)||a.nome.localeCompare(b.nome));
+  document.getElementById('cntSemEnvio').textContent=fmtN(sem.length)+' prestador(es)';
+  renderTable('tblSemEnvio',[COL_PREST,COL_DOC,COL_CAT,COL_TIPO],sem,
+    {vazio:SOURCES.cadastro?'Todos os prestadores do recorte enviaram algo.':'Carregue o relatório de cadastro de prestadores para ver esta lista.'});
+
+  // --- PEGs em aberto ---
+  const sitAbertasPresentes=sitOrdenadas(V.pegs.map(r=>r.situacao)).filter(sitAberta);
+  const ab=P.filter(p=>p.aberto>0).sort((a,b)=>b.aberto-a.aberto||b.peg-a.peg);
+  document.getElementById('cntAberto').textContent=V.usaDetalhe?fmtN(ab.length)+' prestador(es) · '+fmtN(ab.reduce((a,p)=>a+p.aberto,0))+' PEGs':'';
+  const pctCls=v=>v>=80?'b-verde':v>=40?'b-amarelo':'b-vermelho';
+  renderTable('tblAberto',[COL_PREST,COL_TIPO,
+    ...sitAbertasPresentes.map(s=>({h:s.charAt(0)+s.slice(1).toLowerCase(),num:1,v:p=>p.sit[s]?fmtN(p.sit[s]):'·'})),
+    {h:'Em aberto',num:1,v:p=>`<b>${fmtN(p.aberto)}</b>`},{h:'Faturados',num:1,v:p=>fmtN(p.faturado)},
+    {h:'Total PEGs',num:1,v:p=>fmtN(p.peg)},{h:'% faturado',num:1,v:p=>badge(pctCls(pct(p.faturado,p.peg)),fmtPct(p.faturado,p.peg))}],
+    ab,{vazio:V.usaDetalhe?'Nenhum PEG em aberto neste recorte. 🎉':'Carregue o relatório "PEG com situação" para ver esta lista.'});
+
+  // --- notas ---
+  const notas=[...V.notas].sort((a,b)=>b.valor-a.valor);
+  const totNf=notas.reduce((a,x)=>a+x.valor,0);
+  document.getElementById('cntNotas').textContent=fmtN(notas.length)+' nota(s) · '+fmtBRL(totNf);
+  const defCls={'Mesmo mês':'b-verde','1 mês depois':'b-azul','2 meses depois':'b-amarelo','3 meses ou mais':'b-vermelho','Sem data':'b-cinza'};
+  renderTable('tblNotas',[
+    {h:'Prestador',v:n=>prestCell(PREST_MAP[n.cpf])},{h:'Tipo',v:n=>esc(PREST_MAP[n.cpf].tipo)},
+    {h:'Nº nota',num:1,v:n=>esc(n.numero)},{h:'Emissão',v:n=>fmtData(n.emissao)},{h:'Competência',v:n=>fmtComp(n.mes)},
+    {h:'Defasagem',v:n=>badge(defCls[defasagemLabel(n)],defasagemLabel(n))},
+    {h:'Valor',num:1,v:n=>fmtBRL(n.valor),total:fmtBRL(totNf)}],notas,{total:1,vazio:'Nenhuma nota fiscal neste recorte.'});
+
+  const catsNf=CATEGORIAS_COM_NF.map(labelKey);
+  const fsn=P.filter(p=>p.peg>0&&p.nNotas===0&&catsNf.includes(labelKey(p.categoria))).sort((a,b)=>b.peg-a.peg);
+  document.getElementById('cntFornSemNf').textContent=fmtN(fsn.length)+' prestador(es)';
+  renderTable('tblFornSemNf',[COL_PREST,COL_DOC,COL_TIPO,{h:'PEGs',num:1,v:p=>fmtN(p.peg)},
+    {h:'Guias',num:1,v:p=>SOURCES.pegQtd?fmtN(p.guia):'—'}],fsn,{vazio:'Todos os fornecedores com PEG têm nota fiscal no período.'});
+
+  renderTableBase(V);
+}
+
+// ============ base de dados ============
+let baseView='prestadores', baseSearch='', LAST_VIEW=null;
+function baseSpec(V){
+  if(baseView==='pegs'){
+    const rows=[...V.pegs].sort((a,b)=>(a.data||'').localeCompare(b.data||'')||(+a.peg)-(+b.peg));
+    return {rows, cols:[
+      {h:'PEG',num:1,v:r=>esc(r.peg),csv:r=>r.peg},
+      {h:'Prestador',v:r=>prestCell(PREST_MAP[r.cpf]),csv:r=>PREST_MAP[r.cpf].nome},
+      {h:'Fantasia',csv:r=>PREST_MAP[r.cpf].fantasia},
+      {h:'CPF / CNPJ',cls:'doc',v:r=>PREST_MAP[r.cpf].doc,csv:r=>PREST_MAP[r.cpf].doc},
+      {h:'Tipo',v:r=>esc(PREST_MAP[r.cpf].tipo),csv:r=>PREST_MAP[r.cpf].tipo},
+      {h:'Data contábil',v:r=>fmtData(r.data),csv:r=>fmtData(r.data)},
+      {h:'Competência',v:r=>fmtComp(r.mes),csv:r=>fmtComp(r.mes)},
+      {h:'Situação',v:r=>badge(SIT_BADGE[r.situacao]||'b-cinza',r.situacao),csv:r=>r.situacao}],
+      text:r=>{const p=PREST_MAP[r.cpf]; return [r.peg,p.nome,p.fantasia,p.doc,p.cpf,p.tipo,r.situacao].join(' ');}};
+  }
+  if(baseView==='notas'){
+    const rows=[...V.notas].sort((a,b)=>b.valor-a.valor);
+    return {rows, cols:[
+      {h:'Prestador',v:r=>prestCell(PREST_MAP[r.cpf]),csv:r=>PREST_MAP[r.cpf].nome},
+      {h:'Fantasia',csv:r=>PREST_MAP[r.cpf].fantasia},
+      {h:'CPF / CNPJ',cls:'doc',v:r=>PREST_MAP[r.cpf].doc,csv:r=>PREST_MAP[r.cpf].doc},
+      {h:'Tipo',v:r=>esc(PREST_MAP[r.cpf].tipo),csv:r=>PREST_MAP[r.cpf].tipo},
+      {h:'Nº nota',num:1,v:r=>esc(r.numero),csv:r=>r.numero},
+      {h:'Emissão',v:r=>fmtData(r.emissao),csv:r=>fmtData(r.emissao)},
+      {h:'Competência',v:r=>fmtComp(r.mes),csv:r=>fmtComp(r.mes)},
+      {h:'Valor',num:1,v:r=>fmtBRL(r.valor),csv:r=>r.valor.toFixed(2).replace('.',',')}],
+      text:r=>{const p=PREST_MAP[r.cpf]; return [r.numero,p.nome,p.fantasia,p.doc,p.cpf,p.tipo].join(' ');}};
+  }
+  const rows=[...V.prests].sort((a,b)=>b.peg-a.peg||b.valorNotas-a.valorNotas||a.nome.localeCompare(b.nome));
+  const cols=[
+    {h:'Prestador',v:prestCell,csv:p=>p.nome},{h:'Fantasia',csv:p=>p.fantasia},
+    {h:'CPF / CNPJ',cls:'doc',v:p=>p.doc,csv:p=>p.doc},
+    {h:'Categoria',v:p=>esc(p.categoria),csv:p=>p.categoria},{h:'Tipo',v:p=>esc(p.tipo),csv:p=>p.tipo},
+    ...V.meses.map(m=>({h:'PEGs '+fmtComp(m),num:1,v:p=>p.pegMes[m]?fmtN(p.pegMes[m]):'·',csv:p=>p.pegMes[m]||0})),
+    {h:'Guias',num:1,v:p=>p.guia?fmtN(p.guia):'·',csv:p=>p.guia},
+    {h:'Faturados',num:1,v:p=>p.faturado?fmtN(p.faturado):'·',csv:p=>p.faturado},
+    {h:'Em aberto',num:1,v:p=>p.aberto?fmtN(p.aberto):'·',csv:p=>p.aberto},
+    {h:'Notas',num:1,v:p=>p.nNotas?fmtN(p.nNotas):'·',csv:p=>p.nNotas},
+    {h:'Valor notas',num:1,v:p=>p.valorNotas?fmtBRL(p.valorNotas):'·',csv:p=>p.valorNotas.toFixed(2).replace('.',',')},
+    {h:'Movimento',v:p=>badge(MOV_BADGE[p.movimento],p.movimento),csv:p=>p.movimento}];
+  return {rows,cols,text:p=>[p.nome,p.fantasia,p.doc,p.cpf,p.tipo,p.categoria,p.movimento].join(' ')};
+}
+function renderTableBase(V){
+  LAST_VIEW=V;
+  const s=baseSpec(V);
+  const q=labelKey(baseSearch), qd=baseSearch.replace(/\D/g,'');
+  const rows=q?s.rows.filter(r=>{ const t=s.text(r); return labelKey(t).includes(q)||(qd.length>=3&&t.replace(/\D/g,'').includes(qd)); }):s.rows;
+  document.getElementById('rowCount').textContent=fmtN(rows.length)+' linha(s)';
+  renderTable('tblBase',s.cols.filter(c=>c.v),rows,{limit:800});
+}
+function exportCsv(){
+  if(!LAST_VIEW) return;
+  const s=baseSpec(LAST_VIEW);
+  const q=labelKey(baseSearch), qd=baseSearch.replace(/\D/g,'');
+  const rows=q?s.rows.filter(r=>{ const t=s.text(r); return labelKey(t).includes(q)||(qd.length>=3&&t.replace(/\D/g,'').includes(qd)); }):s.rows;
+  const cell=v=>{ v=(v===null||v===undefined)?'':(''+v); return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const lines=[s.cols.map(c=>cell(c.h)).join(';'),...rows.map(r=>s.cols.map(c=>cell(c.csv(r))).join(';'))];
+  const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`prestadores_${baseView}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}
+
+// ============ render ============
+function temDados(){ return Object.values(SOURCES).some(Boolean); }
+function renderAll(){
+  buildFilterPanel();
+  if(!temDados()) return;
+  const V=computeView();
+  renderKpis(V); renderCharts(V); renderTables(V);
+}
+
+// ============ carga dos arquivos ============
+function setStatus(text,state){
+  document.getElementById('dataStatusText').textContent=text;
+  document.getElementById('dataDot').className='dot'+(state?' '+state:'');
+}
+function renderPills(){
+  document.getElementById('filePills').innerHTML=Object.entries(ARQUIVOS).map(([k,a])=>{
+    const ok=!!SOURCES[k];
+    return `<span class="file-pill ${ok?'ok':'miss'}" title="${esc(ok?SOURCE_INFO[k]:'não carregado — esperado em '+a.arquivo)}">${ok?'✔':'✖'} ${esc(a.rotulo)}</span>`;
+  }).join('');
+}
+function showEmptyBanner(title,text,isError){
+  const b=document.getElementById('emptyBanner'); b.style.display='flex'; b.className='empty-banner'+(isError?' err':'');
+  document.getElementById('emptyBannerTitle').textContent=title; document.getElementById('emptyBannerText').textContent=text;
+}
+function hideEmptyBanner(){ document.getElementById('emptyBanner').style.display='none'; }
+
+// Lê um .xlsx e devolve [{tipo, linhas}] para cada aba reconhecida
+function parseWorkbook(buf){
+  const wb=XLSX.read(buf,{type:'array'});
+  const achados=[];
+  for(const nome of wb.SheetNames){
+    const m=XLSX.utils.sheet_to_json(wb.Sheets[nome],{header:1,raw:true,defval:null});
+    const hIdx=m.findIndex(r=>r&&r.some(c=>labelKey(c)==='cpf_cnpj'));
+    if(hIdx===-1) continue;
+    const header=m[hIdx].map(c=>txt(c).toUpperCase());
+    const tipo=Object.keys(ARQUIVOS).find(k=>ARQUIVOS[k].colunas.every(c=>header.includes(c)));
+    if(!tipo) continue;
+    const linhas=[];
+    for(let i=hIdx+1;i<m.length;i++){
+      const r=m[i]; if(!r||r.every(c=>c===null||c==='')) continue;
+      const o={}; header.forEach((h,j)=>{ if(h) o[h]=r[j]; }); linhas.push(o);
+    }
+    achados.push({tipo,linhas,aba:nome});
+  }
+  return achados;
+}
+function aplicarArquivos(lista){   // lista: [{nome, buf}]
+  const reconhecidos=[], ignorados=[];
+  lista.forEach(({nome,buf})=>{
+    try{
+      const achados=parseWorkbook(buf);
+      if(!achados.length){ ignorados.push(nome); return; }
+      achados.forEach(a=>{ SOURCES[a.tipo]=a.linhas; SOURCE_INFO[a.tipo]=`${a.linhas.length} linhas de "${nome}" (aba ${a.aba})`; reconhecidos.push(a.tipo); });
+    }catch(err){ console.error('[dashboard] erro lendo',nome,err); ignorados.push(nome+' (erro: '+err.message+')'); }
+  });
+  buildModel(); renderPills();
+  const n=Object.values(SOURCES).filter(Boolean).length;
+  if(!n){
+    setStatus('Nenhum relatório reconhecido','err');
+    showEmptyBanner('Não reconheci as planilhas',
+      'Os arquivos precisam ser os exports dos relatórios SQL (com a coluna CPF_CNPJ). Ignorados: '+(ignorados.join(', ')||'nenhum arquivo encontrado')+'.',true);
+  } else {
+    hideEmptyBanner();
+    setStatus(`✅ ${n} de 4 relatórios carregados`+(ignorados.length?` · ignorado(s): ${ignorados.join(', ')}`:''),n===4?'ok':'');
+  }
+  renderAll();
+}
+
+function tryAutoLoad(){
+  if(location.protocol==='file:'){
+    setStatus('Modo arquivo local — carregamento automático bloqueado pelo navegador','err');
+    showEmptyBanner('Carregamento automático não funciona neste modo',
+      'Você abriu o index.html direto (duplo clique). Selecione as 4 planilhas de uma vez no botão ao lado, ou abra a pasta no VSCode com Live Server para carregar sozinho.',true);
+    renderPills(); return;
+  }
+  setStatus('Carregando relatórios da pasta dados/...','');
+  const entradas=Object.values(ARQUIVOS);
+  Promise.allSettled(entradas.map(a=>{
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('tempo esgotado')),8000));
+    return Promise.race([fetch(encodeURI(a.arquivo)+'?t='+Date.now()),timeout])
+      .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); const lm=r.headers.get('Last-Modified');
+        return r.arrayBuffer().then(buf=>({nome:a.arquivo,buf,modificado:lm?new Date(lm):null})); });
+  })).then(res=>{
+    const ok=res.filter(r=>r.status==='fulfilled').map(r=>r.value);
+    res.forEach((r,i)=>{ if(r.status==='rejected') console.warn('[dashboard] falha em',entradas[i].arquivo,r.reason); });
+    if(!ok.length){
+      setStatus('Não encontrei as planilhas em dados/','err'); renderPills();
+      showEmptyBanner('Não encontrei os arquivos automaticamente',
+        'Procurei em dados/ ('+entradas.map(a=>a.arquivo.replace('dados/','')).join(', ')+') e não achei. Selecione as planilhas manualmente — pode escolher as 4 de uma vez.',true);
+      return;
+    }
+    aplicarArquivos(ok);
+    atualizarDataGithub(ok);
+  });
+}
+// ============ data da última atualização ============
+function maisRecente(lista){ const ds=lista.map(x=>x.modificado).filter(d=>d&&!isNaN(d)); return ds.length?new Date(Math.max(...ds)):null; }
+function detectarRepo(){
+  if(GITHUB_REPO) return {repo:GITHUB_REPO, pasta:''};
+  const m=location.hostname.match(/^([^.]+)\.github\.io$/i); if(!m) return null;
+  const partes=location.pathname.split('/').filter(Boolean).filter(x=>!/\.html?$/i.test(x));
+  if(!partes.length) return {repo:m[1]+'/'+location.hostname, pasta:''};   // site de usuário
+  return {repo:m[1]+'/'+partes[0], pasta:partes.slice(1).map(x=>x+'/').join('')}; // repo/subpasta
+}
+function mostrarAtualizacao(data,origem,detalhe,modo){
+  const el=document.getElementById('dataUpdated');
+  if(!data||isNaN(data)){ el.innerHTML=''; el.title=''; return; }
+  const quandoData=data.toLocaleDateString('pt-BR')+' às '+data.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const dias=Math.floor((Date.now()-data.getTime())/86400000);
+  const quando=dias<=0?'hoje':dias===1?'há 1 dia':'há '+dias+' dias';
+  el.innerHTML=`· dados atualizados em <b>${quandoData}</b> (${esc(origem)}) `
+    +(dias>DIAS_ALERTA_DESATUALIZADO?`<span class="aviso">⚠ ${quando}</span>`:'· '+quando);
+  el.title=detalhe||'';
+}
+function atualizarDataGithub(lista){
+  const plano=()=>{ const lm=maisRecente(lista);
+    mostrarAtualizacao(lm, location.hostname.endsWith('github.io')?'publicação no GitHub Pages':'data dos arquivos'); };
+  plano();   // mostra algo na hora; o GitHub substitui se responder
+  const r=detectarRepo(); if(!r) return;
+  const url=`https://api.github.com/repos/${r.repo}/commits?path=${encodeURIComponent(r.pasta+'dados')}&per_page=1`;
+  fetch(url).then(x=>{ if(!x.ok) throw new Error('HTTP '+x.status); return x.json(); })
+    .then(j=>{
+      if(!Array.isArray(j)||!j.length) throw new Error('nenhum commit em dados/');
+      const c=j[0].commit;
+      mostrarAtualizacao(new Date(c.committer.date),'último commit no GitHub',
+        `Commit: "${c.message.split('\n')[0]}" — ${c.author.name}`);
+    })
+    .catch(err=>console.warn('[dashboard] data do GitHub indisponível, usando a do servidor:',err.message));
+}
+
+function wireFileInput(el){
+  el.addEventListener('change',e=>{
+    const files=[...e.target.files]; if(!files.length) return;
+    setStatus('Lendo '+files.length+' arquivo(s)...','');
+    Promise.all(files.map(f=>f.arrayBuffer().then(buf=>({nome:f.name,buf,modificado:new Date(f.lastModified)}))))
+      .then(lista=>{ aplicarArquivos(lista);
+        mostrarAtualizacao(maisRecente(lista),'data das planilhas carregadas',null,'upload'); })
+      .catch(err=>setStatus('Erro ao ler: '+err.message,'err'));
+    e.target.value='';
+  });
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active'); document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+}));
+document.querySelectorAll('#viewSwitch button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#viewSwitch button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); baseView=b.dataset.view; if(LAST_VIEW) renderTableBase(LAST_VIEW);
+}));
+document.getElementById('searchBox').addEventListener('input',e=>{ baseSearch=e.target.value; if(LAST_VIEW) renderTableBase(LAST_VIEW); });
+document.getElementById('btnCsv').addEventListener('click',exportCsv);
+document.getElementById('btnRefresh').addEventListener('click',tryAutoLoad);
+wireFileInput(document.getElementById('fileInput'));
+wireFileInput(document.getElementById('fileInputBig'));
+
+if(typeof Chart==='undefined'||typeof XLSX==='undefined'){
+  showEmptyBanner('As bibliotecas do painel não carregaram',
+    'Os arquivos vendor/chart.umd.min.js e vendor/xlsx.full.min.js precisam estar na pasta "vendor" ao lado do index.html. Confira se a pasta veio junto ao extrair o zip.',true);
+  setStatus('Erro: bibliotecas locais não encontradas','err');
+}else{
+  renderPills(); buildFilterPanel(); tryAutoLoad();
+}
+</script>
+</body>
+</html>
