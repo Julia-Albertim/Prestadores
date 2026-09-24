@@ -160,6 +160,17 @@
   .view-switch button{border:none;background:transparent;font-size:12.5px;font-weight:600;color:var(--texto-suave);
     padding:6px 13px;border-radius:17px;cursor:pointer;}
   .view-switch button.active{background:#fff;color:var(--azul);box-shadow:0 1px 3px rgba(31,50,102,.15);}
+  .sql-card{margin-bottom:15px;}
+  .sql-card pre{background:#F4F6FB;border:1px solid var(--borda);border-radius:8px;padding:14px 16px;margin:10px 0 0;
+    font-family:Consolas,'Courier New',monospace;font-size:12px;line-height:1.5;color:#1F3266;overflow-x:auto;white-space:pre;}
+  .sql-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--texto-suave);}
+  .sql-meta code{background:#EEF1F8;padding:2px 7px;border-radius:5px;font-size:11.5px;}
+  .btn-copy{margin-left:auto;}
+  .comp-switch{display:flex;align-items:center;gap:10px;margin-bottom:15px;flex-wrap:wrap;}
+  .comp-switch span{font-size:13px;font-weight:600;color:var(--azul-escuro);}
+  .filters-head .btn-padrao{background:none;border:1px solid var(--borda);color:var(--azul);font-size:12px;font-weight:600;
+    padding:5px 12px;border-radius:16px;cursor:pointer;margin-left:6px;}
+  body.aba-sql #filterPanel, body.aba-sql #kpiRow{display:none;}
   .card-empty{padding:30px 10px;text-align:center;color:var(--texto-suave);font-size:12.5px;}
   .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
   .card-head .count-tag{margin-top:2px;}
@@ -196,7 +207,9 @@
   <button class="tab-btn" data-tab="cobertura">Cadastro x Envio</button>
   <button class="tab-btn" data-tab="peg">PEG &amp; Situação</button>
   <button class="tab-btn" data-tab="nf">Notas Fiscais</button>
+  <button class="tab-btn" data-tab="liberacao">Liberação p/ Nota</button>
   <button class="tab-btn" data-tab="base">Base de Dados</button>
+  <button class="tab-btn" data-tab="sql">Consultas SQL</button>
 </nav>
 
 <main>
@@ -330,10 +343,7 @@
 
   <!-- ===== NOTAS FISCAIS ===== -->
   <div class="tab-panel" id="tab-nf">
-    <div class="nota">
-      A competência da nota fiscal é o <b>mês de inclusão</b> no sistema; a data de emissão aparece à parte.
-      "Defasagem" = quantos meses separam a emissão da nota da competência em que ela foi incluída.
-    </div>
+    <div class="nota" id="notaNf"></div>
     <div class="grid c2">
       <div class="card tall">
         <h3>Valor por Prestador</h3>
@@ -370,6 +380,49 @@
         <span class="count-tag" id="cntFornSemNf"></span></div>
       <div class="table-wrap short"><table id="tblFornSemNf"><thead></thead><tbody></tbody></table></div>
     </div>
+  </div>
+
+  <!-- ===== LIBERAÇÃO ===== -->
+  <div class="tab-panel" id="tab-liberacao">
+    <div class="nota">
+      Um prestador está <b>liberado para emitir nota fiscal</b> numa competência quando <b>todos os seus PEGs daquela competência estão FATURADOS</b>
+      (PEGs cancelados ou devolvidos não entram na conta). <span id="notaLibNf"></span> Esta aba ignora o filtro de situação do PEG.
+    </div>
+    <div class="comp-switch"><span>Competência analisada:</span><div class="view-switch" id="libSwitch"></div></div>
+    <div class="kpis" id="libKpis"></div>
+    <div class="grid c2">
+      <div class="card tall">
+        <h3>Liberação por Competência</h3>
+        <p class="hint">Prestadores únicos em cada etapa, mês a mês</p>
+        <canvas id="chLibMes"></canvas>
+      </div>
+      <div class="card tall">
+        <h3 id="ttlLibTipo">Tipo de Prestador x Liberação</h3>
+        <p class="hint">Na competência analisada — clique para filtrar o tipo</p>
+        <canvas id="chLibTipo"></canvas>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:15px;">
+      <div class="card-head"><div><h3 id="ttlLiberados">Prestadores Liberados</h3>
+        <p class="hint">Todos os PEGs faturados — primeiro os que ainda não mandaram nota fiscal</p></div>
+        <span class="count-tag" id="cntLiberados"></span></div>
+      <div class="table-wrap"><table id="tblLiberados"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3 id="ttlProcesso">Ainda no Processo</h3>
+        <p class="hint">Têm PEG em digitação, conferência, verificação ou pronto — do que tem mais PEG em aberto para o que tem menos</p></div>
+        <span class="count-tag" id="cntProcesso"></span></div>
+      <div class="table-wrap"><table id="tblProcesso"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ===== CONSULTAS SQL ===== -->
+  <div class="tab-panel" id="tab-sql">
+    <div class="nota">
+      Consultas executadas no banco Oracle para gerar as planilhas usadas neste painel. As consultas ficam
+      registradas no próprio painel (não é preciso exportar a aba SQL).
+    </div>
+    <div id="sqlList"></div>
   </div>
 
   <!-- ===== BASE ===== -->
@@ -418,6 +471,105 @@ const CATEGORIAS_COM_NF = ['FORNECEDOR'];
 // Vazio = descobre o repositório pela URL do GitHub Pages (usuario.github.io/REPOSITORIO/).
 // Se o painel ficar num lugar diferente, preencha: 'Julia-Albertim/NomeDoRepositorio'
 const GITHUB_REPO = '';
+// Filtro de categoria aplicado ao abrir o painel: todas as categorias,
+// MENOS as que contêm estes textos. Para abrir sem filtro, deixe a lista vazia: []
+const CATEGORIAS_FORA_DO_PADRAO = ['REEMBOLSO','DESCREDENCIADO'];
+
+// ============ CONSULTAS SQL (fixas) ============
+// Texto mostrado na aba "Consultas SQL". Se mudar alguma consulta no Oracle,
+// atualize aqui também — não é preciso manter a aba SQL nas planilhas exportadas.
+const SQL_FIXO = {
+cadastro: `SELECT --TODOS OS PRESTADORES - GERAL
+    PRE.HANDLE                  AS HANDLE_PRESTADOR,
+    PRE.CPFCNPJ                 AS CPF_CNPJ,
+    PRE.NOME                    AS NOME_PRESTADOR,
+    PRE.FANTASIA                AS NOME_FANTASIA,
+    CATP.DESCRICAO              AS CATEGORIA_PRESTADOR,
+    TPP.DESCRICAO               AS TIPO_PRESTADOR
+FROM SAM_PRESTADOR PRE
+    LEFT JOIN SAM_CATEGORIA_PRESTADOR CATP ON CATP.HANDLE = PRE.CATEGORIA
+    LEFT JOIN SAM_TIPOPRESTADOR       TPP  ON TPP.HANDLE  = PRE.TIPOPRESTADOR
+ORDER BY PRE.NOME;`,
+
+pegSit: `SELECT DISTINCT --PRESTADORES QUE ENVIARAM PEG - COMPETÊNCIA CONTÁBIL 07 e 08/2026 - COM SITUAÇÃO
+    PRE.CPFCNPJ                               AS CPF_CNPJ,
+    PRE.NOME                                  AS NOME_PRESTADOR,
+    PRE.FANTASIA                              AS NOME_FANTASIA_PRESTADOR,
+    CATP.DESCRICAO                            AS CATEGORIA_PRESTADOR,
+    TPP.DESCRICAO                             AS TIPO_PRESTADOR,
+    P.PEG                                     AS PEG,
+    P.DATACONTABIL                            AS DATA_CONTABIL,
+    TO_CHAR(P.DATACONTABIL, 'MM/YYYY')        AS MES_ANO,
+    DECODE(P.SITUACAO,
+        1,'DIGITAÇÃO', 2,'CONFERÊNCIA', 3,'PRONTO', 4,'FATURADO',
+        6,'VERIFICAÇÃO', 8,'CANCELADO', 9,'DEVOLVIDO')             AS SITUACAO_PEG
+FROM SAM_PEG P
+    JOIN SAM_GUIA G ON G.PEG = P.HANDLE
+    LEFT JOIN SAM_PRESTADOR PRE ON PRE.HANDLE = CASE WHEN P.TABREGIMEPGTO = 2 THEN G.EXECUTOR ELSE P.RECEBEDOR END
+    LEFT JOIN SAM_CATEGORIA_PRESTADOR CATP ON CATP.HANDLE = PRE.CATEGORIA
+    LEFT JOIN SAM_TIPOPRESTADOR       TPP  ON TPP.HANDLE  = PRE.TIPOPRESTADOR
+WHERE P.DATACONTABIL >= TO_DATE('01/07/2026','DD/MM/YYYY')
+    AND P.DATACONTABIL <  TO_DATE('01/09/2026','DD/MM/YYYY')
+ORDER BY PRE.NOME, P.PEG`,
+
+pegQtd: `SELECT --QUANTIDADE DE PEG POR PRESTADOR - COMPETÊNCIA CONTÁBIL 07 e 08/2026 - TODAS AS SITUAÇÕES
+    PRE.CPFCNPJ                               AS CPF_CNPJ,
+    PRE.NOME                                  AS NOME_PRESTADOR,
+    PRE.FANTASIA                              AS NOME_FANTASIA_PRESTADOR,
+    CATP.DESCRICAO                            AS CATEGORIA_PRESTADOR,
+    TPP.DESCRICAO                             AS TIPO_PRESTADOR,
+    TO_CHAR(P.DATACONTABIL, 'MM/YYYY')        AS MES_ANO,
+    COUNT(DISTINCT P.HANDLE)                  AS QTD_PEG,
+    COUNT(DISTINCT G.HANDLE)                  AS QTD_GUIA
+FROM SAM_PEG P
+    JOIN SAM_GUIA G ON G.PEG = P.HANDLE
+    LEFT JOIN SAM_PRESTADOR PRE ON PRE.HANDLE = CASE WHEN P.TABREGIMEPGTO = 2 THEN G.EXECUTOR ELSE P.RECEBEDOR END
+    LEFT JOIN SAM_CATEGORIA_PRESTADOR CATP ON CATP.HANDLE = PRE.CATEGORIA
+    LEFT JOIN SAM_TIPOPRESTADOR       TPP  ON TPP.HANDLE  = PRE.TIPOPRESTADOR
+WHERE P.DATACONTABIL >= TO_DATE('01/07/2026','DD/MM/YYYY')
+    AND P.DATACONTABIL <  TO_DATE('01/09/2026','DD/MM/YYYY')
+GROUP BY PRE.CPFCNPJ, PRE.NOME, PRE.FANTASIA, CATP.DESCRICAO, TPP.DESCRICAO, TO_CHAR(P.DATACONTABIL, 'MM/YYYY')
+ORDER BY MES_ANO, QTD_PEG DESC`,
+
+notas: `SELECT --NOTAS FISCAIS LIGADAS AO PEG - COMPETÊNCIA CONTÁBIL DO PEG 07 e 08/2026
+    PRE.CPFCNPJ                                  AS CPF_CNPJ,
+    PRE.NOME                                     AS NOME_PRESTADOR,
+    PRE.FANTASIA                                 AS NOME_FANTASIA_PRESTADOR,
+    CATP.DESCRICAO                               AS CATEGORIA_PRESTADOR,
+    TPP.DESCRICAO                                AS TIPO_PRESTADOR,
+    DFN.NUMERONOTA                               AS NUMERO_NOTA,
+    TO_CHAR(DFN.DATAEMISSAO,'DD/MM/YYYY')        AS DATA_EMISSAO,
+    TO_CHAR(DFN.DATAINCLUSAO,'MM/YYYY')          AS MES_INCLUSAO,
+    TO_CHAR(PG.PRIMEIRA_DATACONTABIL,'MM/YYYY')  AS MES_ANO,
+    TO_CHAR(PG.ULTIMA_DATACONTABIL,'MM/YYYY')    AS MES_ANO_ULTIMO,
+    PG.QTD_PEG                                   AS QTD_PEG_VINCULADOS,
+    DFN.VALOR                                    AS VALOR_NOTA
+FROM SAM_DOCUMENTOFISCAL_NOTA DFN
+    JOIN SAM_DOCUMENTOFISCAL    DF ON DF.HANDLE = DFN.DOCUMENTOFISCAL
+    JOIN SAM_AGRUPADORPAGAMENTO AP ON AP.HANDLE = DF.PAGAMENTO
+    JOIN (SELECT P.AGRUPADORPAGAMENTO,
+                 MIN(P.DATACONTABIL) AS PRIMEIRA_DATACONTABIL,
+                 MAX(P.DATACONTABIL) AS ULTIMA_DATACONTABIL,
+                 COUNT(*)            AS QTD_PEG
+          FROM SAM_PEG P
+          WHERE P.AGRUPADORPAGAMENTO IS NOT NULL
+            AND P.DATACONTABIL >= TO_DATE('01/07/2026','DD/MM/YYYY')
+            AND P.DATACONTABIL <  TO_DATE('01/09/2026','DD/MM/YYYY')
+          GROUP BY P.AGRUPADORPAGAMENTO) PG ON PG.AGRUPADORPAGAMENTO = AP.HANDLE
+    JOIN SAM_PRESTADOR PRE                 ON PRE.HANDLE = AP.RECEBEDOR
+    LEFT JOIN SAM_CATEGORIA_PRESTADOR CATP ON CATP.HANDLE = PRE.CATEGORIA
+    LEFT JOIN SAM_TIPOPRESTADOR       TPP  ON TPP.HANDLE  = PRE.TIPOPRESTADOR
+ORDER BY PRE.NOME, MES_ANO`
+};
+
+// Descrição de cada consulta na aba "Consultas SQL"
+let SQL_DESCRICAO = {
+  cadastro:'Cadastro completo de prestadores, com categoria e tipo. É a base para saber quem não enviou nada no período.',
+  pegSit:'Cada PEG do período com o prestador, a data contábil e a situação no fluxo (DECODE de SAM_PEG.SITUACAO). Quando o regime de pagamento é 2, o prestador é o executor da guia; senão, o recebedor do PEG.',
+  pegQtd:'Quantidade de PEGs e de guias por prestador e competência contábil, em todas as situações.',
+  notas:'Notas fiscais incluídas no período, ligadas ao prestador recebedor do pagamento. A competência é o mês de inclusão da nota.'
+};
+
 // Acima de quantos dias sem atualizar o topo mostra um aviso
 const DIAS_ALERTA_DESATUALIZADO = 35;
 
@@ -494,8 +646,10 @@ function sitFaturada(s){ return labelKey(s)===SIT_FATURADO; }
 
 // ============ estado ============
 let SOURCES = {cadastro:null,pegSit:null,pegQtd:null,notas:null};   // linhas brutas por relatório
-let SOURCE_INFO = {};                                               // origem/qtd de cada relatório
+let SOURCE_INFO = {};
+let SQL_TEXTO = {};                                                 // SQL de cada relatório (aba SQL)                                               // origem/qtd de cada relatório
 let PRESTS=[], PREST_MAP={}, PEGS=[], QTDS=[], NOTAS=[], ALL_MESES=[];
+const nfPorPeg=()=>NOTAS.length>0&&NOTAS.every(n=>n.vinculada);
 
 // ============ montagem do modelo ============
 function buildModel(){
@@ -522,8 +676,12 @@ function buildModel(){
   (SOURCES.notas||[]).forEach(r=>{
     const p=add(r,false); if(!p) return;
     const em=toDate(r.DATA_EMISSAO);
-    NOTAS.push({cpf:p.cpf, numero:r.NUMERO_NOTA, emissao:ymd(em), mesEmissao:ym(em),
-      mes:parseMesAno(r.MES_ANO,em), valor:+r.VALOR_NOTA||0});
+    // formato novo: MES_ANO = competência do PEG (via agrupador de pagamento) e MES_INCLUSAO à parte
+    const vinculada=r.MES_INCLUSAO!==undefined;
+    const mes=parseMesAno(r.MES_ANO,em);
+    NOTAS.push({cpf:p.cpf, numero:r.NUMERO_NOTA, emissao:ymd(em), mesEmissao:ym(em), vinculada,
+      mes, mesInclusao:vinculada?parseMesAno(r.MES_INCLUSAO,null):mes, mesUltimo:parseMesAno(r.MES_ANO_ULTIMO,null)||mes,
+      qtdPeg:+r.QTD_PEG_VINCULADOS||0, valor:+r.VALOR_NOTA||0});
   });
   // rótulo curto para gráficos: fantasia (ou nome); se repetir, acrescenta o final do documento
   const cont={};
@@ -553,6 +711,18 @@ function showVal(field,v){ return FIELD_DISPLAY[field]?FIELD_DISPLAY[field](v):v
 function toggleFilter(field,value){ filters[field].has(value)?filters[field].delete(value):filters[field].add(value); renderAll(); }
 function countActiveFilters(){ return FIELDS.reduce((a,f)=>a+filters[f].size,0); }
 function clearFilters(){ FIELDS.forEach(f=>filters[f].clear()); renderAll(); }
+let filtroPadraoAplicado=false;
+function categoriasPadrao(){
+  const fora=CATEGORIAS_FORA_DO_PADRAO.map(labelKey);
+  const todas=uniqueValues('categoria');
+  const dentro=todas.filter(c=>!fora.some(f=>labelKey(c).includes(f)));
+  return (fora.length&&dentro.length<todas.length)?dentro:[];
+}
+function aplicarFiltroPadrao(){ FIELDS.forEach(f=>filters[f].clear()); categoriasPadrao().forEach(c=>filters.categoria.add(c)); }
+function ehFiltroPadrao(){
+  const pad=categoriasPadrao();
+  return FIELDS.every(f=>f==='categoria'||!filters[f].size)&&filters.categoria.size===pad.length&&pad.every(c=>filters.categoria.has(c));
+}
 
 function buildFilterPanel(){
   const panel=document.getElementById('filterPanel'); panel.innerHTML='';
@@ -573,7 +743,12 @@ function buildFilterPanel(){
     x.onclick=()=>toggleFilter(field,val); chip.appendChild(x); summary.appendChild(chip);
   }));
   left.appendChild(summary); head.appendChild(left);
-  if(n){ const c=document.createElement('button'); c.className='clear'; c.textContent='Limpar filtros'; c.onclick=clearFilters; head.appendChild(c); }
+  const acoes=document.createElement('div');
+  if(n){ const c=document.createElement('button'); c.className='clear'; c.textContent='Limpar filtros'; c.onclick=clearFilters; acoes.appendChild(c); }
+  if(categoriasPadrao().length&&!ehFiltroPadrao()){ const d=document.createElement('button'); d.className='btn-padrao';
+    d.textContent='↺ Filtro padrão'; d.title='Todas as categorias, menos reembolso e descredenciados';
+    d.onclick=()=>{ aplicarFiltroPadrao(); renderAll(); }; acoes.appendChild(d); }
+  head.appendChild(acoes);
   panel.appendChild(head);
 
   const body=document.createElement('div'); body.className='filters-body'+(filtersOpen?' open':'');
@@ -646,7 +821,7 @@ function renderKpis(V){
   const prestNf=new Set(V.notas.map(n=>n.cpf)).size;
   const k=[
     ['neutro',temCad?fmtN(cad):'—','Prestadores no cadastro',temCad?'no recorte dos filtros':'relatório não carregado'],
-    ['ok',fmtN(enviaram),'Enviaram PEG',temCad?fmtPct(enviaram,V.prests.length)+' do recorte':''],
+    ['ok',fmtN(enviaram),'Prestadores que enviaram PEG','únicos por CPF/CNPJ'+(temCad?' · '+fmtPct(enviaram,V.prests.length)+' do recorte':'')],
     ['bad',temCad?fmtN(semEnvio):'—','Sem nenhum envio',temCad?fmtPct(semEnvio,V.prests.length)+' do recorte':''],
     ['info',fmtN(totPeg),'PEGs no período',V.meses.length+' competência(s)'],
     ['info',SOURCES.pegQtd?fmtN(totGuia):'—','Guias nos PEGs',totPeg?'média de '+(totGuia/totPeg).toLocaleString('pt-BR',{maximumFractionDigits:1})+' por PEG':''],
@@ -801,7 +976,7 @@ function renderCharts(V){
     data:{labels:defL,datasets:[{data:defL.map(d=>def[d]),backgroundColor:defL.map(d=>defCor[d]),borderRadius:5,maxBarThickness:60}]},
     options:OPT_BAR});
 }
-function defasagem(n){ return (n.mesEmissao&&n.mes)?mesesEntre(n.mesEmissao,n.mes):null; }
+function defasagem(n){ return (n.mesEmissao&&n.mesInclusao)?mesesEntre(n.mesEmissao,n.mesInclusao):null; }
 function defasagemLabel(n){ const d=defasagem(n); if(d===null) return 'Sem data'; if(d<=0) return 'Mesmo mês';
   if(d===1) return '1 mês depois'; if(d===2) return '2 meses depois'; return '3 meses ou mais'; }
 
@@ -869,7 +1044,7 @@ function renderTables(V){
   const defCls={'Mesmo mês':'b-verde','1 mês depois':'b-azul','2 meses depois':'b-amarelo','3 meses ou mais':'b-vermelho','Sem data':'b-cinza'};
   renderTable('tblNotas',[
     {h:'Prestador',v:n=>prestCell(PREST_MAP[n.cpf])},{h:'Tipo',v:n=>esc(PREST_MAP[n.cpf].tipo)},
-    {h:'Nº nota',num:1,v:n=>esc(n.numero)},{h:'Emissão',v:n=>fmtData(n.emissao)},{h:'Competência',v:n=>fmtComp(n.mes)},
+    {h:'Nº nota',num:1,v:n=>esc(n.numero)},{h:'Emissão',v:n=>fmtData(n.emissao)},{h:'Inclusão',v:n=>fmtComp(n.mesInclusao)},{h:nfPorPeg()?'Competência do PEG':'Competência',v:n=>fmtComp(n.mes)+(n.mesUltimo&&n.mesUltimo!==n.mes?' a '+fmtComp(n.mesUltimo):'')},
     {h:'Defasagem',v:n=>badge(defCls[defasagemLabel(n)],defasagemLabel(n))},
     {h:'Valor',num:1,v:n=>fmtBRL(n.valor),total:fmtBRL(totNf)}],notas,{total:1,vazio:'Nenhuma nota fiscal neste recorte.'});
 
@@ -907,7 +1082,9 @@ function baseSpec(V){
       {h:'Tipo',v:r=>esc(PREST_MAP[r.cpf].tipo),csv:r=>PREST_MAP[r.cpf].tipo},
       {h:'Nº nota',num:1,v:r=>esc(r.numero),csv:r=>r.numero},
       {h:'Emissão',v:r=>fmtData(r.emissao),csv:r=>fmtData(r.emissao)},
-      {h:'Competência',v:r=>fmtComp(r.mes),csv:r=>fmtComp(r.mes)},
+      {h:'Inclusão',v:r=>fmtComp(r.mesInclusao),csv:r=>fmtComp(r.mesInclusao)},
+      {h:nfPorPeg()?'Competência do PEG':'Competência',v:r=>fmtComp(r.mes),csv:r=>fmtComp(r.mes)},
+      {h:'PEGs vinculados',num:1,v:r=>r.vinculada?fmtN(r.qtdPeg):'—',csv:r=>r.vinculada?r.qtdPeg:''},
       {h:'Valor',num:1,v:r=>fmtBRL(r.valor),csv:r=>r.valor.toFixed(2).replace('.',',')}],
       text:r=>{const p=PREST_MAP[r.cpf]; return [r.numero,p.nome,p.fantasia,p.doc,p.cpf,p.tipo].join(' ');}};
   }
@@ -952,7 +1129,119 @@ function renderAll(){
   buildFilterPanel();
   if(!temDados()) return;
   const V=computeView();
-  renderKpis(V); renderCharts(V); renderTables(V);
+  const vinc=nfPorPeg();
+  document.getElementById('notaNf').innerHTML=vinc
+    ?'Cada nota fiscal está ligada aos PEGs que ela paga (pelo agrupador de pagamento), então a <b>competência da nota é a competência contábil desses PEGs</b> — uma nota incluída em agosto referente a PEGs de julho conta em julho. "Defasagem" = meses entre a emissão da nota e a inclusão no sistema.'
+    :'A competência da nota fiscal é o <b>mês de inclusão</b> no sistema (a consulta atual não liga a nota ao PEG). "Defasagem" = meses entre a emissão da nota e a inclusão no sistema.';
+  document.getElementById('notaLibNf').innerHTML=vinc
+    ?'"Com nota" = tem nota fiscal ligada aos PEGs daquela competência.'
+    :'"Com nota" = tem nota fiscal incluída naquela competência ou depois, já que a nota costuma chegar no mês seguinte.';
+  SQL_DESCRICAO.notas=vinc
+    ?'Notas fiscais ligadas aos PEGs que pagam, pelo agrupador de pagamento (SAM_PEG.AGRUPADORPAGAMENTO = SAM_DOCUMENTOFISCAL.PAGAMENTO). A competência é a data contábil dos PEGs; o mês de inclusão da nota vem à parte.'
+    :'Notas fiscais incluídas no período, ligadas ao prestador recebedor do pagamento. A competência é o mês de inclusão da nota.';
+  renderKpis(V); renderCharts(V); renderTables(V); renderLiberacao(V); renderSql();
+}
+
+// ============ liberação para nota fiscal ============
+const LIB_ORDEM=['Liberado com nota','Liberado aguardando nota','Parcialmente liberado','Em processo'];
+const LIB_COLORS={'Liberado com nota':COLORS.verdeEscuro,'Liberado aguardando nota':COLORS.verde,
+  'Parcialmente liberado':COLORS.amarelo,'Em processo':COLORS.azulClaro};
+const LIB_KPI={'Liberado com nota':'ok','Liberado aguardando nota':'ok','Parcialmente liberado':'warn','Em processo':'info'};
+const LIB_BADGE={'Liberado com nota':'b-verde','Liberado aguardando nota':'b-amarelo'};
+let libMes=null;
+
+// status de cada prestador em cada competência (usa todos os PEGs, ignora o filtro de situação)
+function statusLiberacao(V){
+  const set=new Set(V.prests.map(p=>p.cpf)), mesesSet=new Set(V.meses);
+  const por={};   // mes -> cpf -> {fat, ab, sit}
+  PEGS.forEach(r=>{
+    if(!set.has(r.cpf)||!mesesSet.has(r.mes)) return;
+    const fat=sitFaturada(r.situacao), ab=sitAberta(r.situacao); if(!fat&&!ab) return;
+    const m=(por[r.mes]=por[r.mes]||{}), x=(m[r.cpf]=m[r.cpf]||{fat:0,ab:0,sit:{}});
+    fat?x.fat++:x.ab++; x.sit[r.situacao]=(x.sit[r.situacao]||0)+1;
+  });
+  const notasPor={}; NOTAS.forEach(n=>(notasPor[n.cpf]=notasPor[n.cpf]||[]).push(n));
+  const guias={}; QTDS.forEach(q=>guias[q.cpf+'|'+q.mes]=q.guias);
+  const out={};
+  V.meses.forEach(mes=>{
+    out[mes]=Object.entries(por[mes]||{}).map(([cpf,x])=>{
+      const notas=(notasPor[cpf]||[]).filter(n=>n.vinculada?(n.mes<=mes&&mes<=(n.mesUltimo||n.mes)):(n.mes&&n.mes>=mes));
+      const status=x.ab===0?(notas.length?'Liberado com nota':'Liberado aguardando nota'):(x.fat>0?'Parcialmente liberado':'Em processo');
+      return {p:PREST_MAP[cpf],status,fat:x.fat,ab:x.ab,sit:x.sit,guias:guias[cpf+'|'+mes]||0,
+        nNotas:notas.length,valorNotas:notas.reduce((a,n)=>a+n.valor,0)};
+    });
+  });
+  return out;
+}
+function renderLiberacao(V){
+  const sw=document.getElementById('libSwitch');
+  if(!V.usaDetalhe){ sw.innerHTML=''; document.getElementById('libKpis').innerHTML='<div class="card-empty">Carregue o relatório "PEG com situação" para ver a liberação.</div>'; return; }
+  if(!V.meses.includes(libMes)) libMes=V.meses[V.meses.length-1];
+  sw.innerHTML=V.meses.map(m=>`<button data-mes="${m}" class="${m===libMes?'active':''}">${fmtComp(m)}</button>`).join('');
+  sw.querySelectorAll('button').forEach(b=>b.onclick=()=>{ libMes=b.dataset.mes; renderLiberacao(LAST_VIEW); });
+  const S=statusLiberacao(V), L=S[libMes]||[];
+  const cont={}; L.forEach(x=>cont[x.status]=(cont[x.status]||0)+1);
+  const libTot=(cont['Liberado com nota']||0)+(cont['Liberado aguardando nota']||0);
+  document.getElementById('libKpis').innerHTML=
+    `<div class="kpi neutro"><div class="num">${fmtN(L.length)}</div><div class="lbl">Prestadores com PEG</div><div class="sub">em ${fmtComp(libMes)} (únicos)</div></div>
+     <div class="kpi ok"><div class="num">${fmtN(libTot)}</div><div class="lbl">Liberados p/ nota</div><div class="sub">${fmtPct(libTot,L.length)} dos que enviaram PEG</div></div>`+
+    LIB_ORDEM.map(s=>`<div class="kpi ${LIB_KPI[s]}"><div class="num">${fmtN(cont[s]||0)}</div><div class="lbl">${s}</div><div class="sub">${fmtPct(cont[s]||0,L.length)}</div></div>`).join('');
+
+  drawChart('libMes','chLibMes',{type:'bar',
+    data:{labels:V.meses.map(fmtComp),datasets:LIB_ORDEM.map(s=>({label:s,backgroundColor:LIB_COLORS[s],borderRadius:3,maxBarThickness:70,
+      data:V.meses.map(m=>(S[m]||[]).filter(x=>x.status===s).length)}))},
+    options:{...OPT_STACK,onClick:(e,els,ch)=>{ if(els.length){ libMes=V.meses[els[0].index]; renderLiberacao(LAST_VIEW);} }}});
+
+  const t={}; L.forEach(x=>{ const k=x.p.tipo; (t[k]=t[k]||{_t:0}); t[k][x.status]=(t[k][x.status]||0)+1; t[k]._t++; });
+  const tL=Object.keys(t).sort((a,b)=>t[b]._t-t[a]._t);
+  document.getElementById('ttlLibTipo').textContent='Tipo de Prestador x Liberação — '+fmtComp(libMes);
+  drawChart('libTipo','chLibTipo',{type:'bar',
+    data:{labels:tL,datasets:LIB_ORDEM.map(s=>({label:s,data:tL.map(k=>t[k][s]||0),backgroundColor:LIB_COLORS[s],borderRadius:3}))},
+    options:{...OPT_STACKH,onClick:clickFilter('tipo'),scales:{...OPT_STACKH.scales,y:{stacked:true,...yTicks(30)}}}});
+
+  const lib=L.filter(x=>x.status.startsWith('Liberado'))
+    .sort((a,b)=>(a.status===b.status?0:a.status==='Liberado aguardando nota'?-1:1)||b.fat-a.fat);
+  document.getElementById('ttlLiberados').textContent='Prestadores Liberados — '+fmtComp(libMes);
+  document.getElementById('cntLiberados').textContent=`${fmtN(lib.length)} prestador(es) · ${fmtN(cont['Liberado aguardando nota']||0)} aguardando nota`;
+  renderTable('tblLiberados',[
+    {h:'Prestador',v:x=>prestCell(x.p)},{h:'CPF / CNPJ',cls:'doc',v:x=>x.p.doc},{h:'Tipo',v:x=>esc(x.p.tipo)},
+    {h:'PEGs faturados',num:1,v:x=>fmtN(x.fat)},{h:'Guias',num:1,v:x=>SOURCES.pegQtd?fmtN(x.guias):'—'},
+    {h:'Nota fiscal',v:x=>badge(LIB_BADGE[x.status],x.status==='Liberado com nota'?'Com nota':'Aguardando nota')},
+    {h:'Notas',num:1,v:x=>x.nNotas?fmtN(x.nNotas):'·'},{h:'Valor notas',num:1,v:x=>x.valorNotas?fmtBRL(x.valorNotas):'·'}],
+    lib,{vazio:'Nenhum prestador com todos os PEGs faturados nesta competência.'});
+
+  const proc=L.filter(x=>!x.status.startsWith('Liberado')).sort((a,b)=>b.ab-a.ab||b.fat-a.fat);
+  const sitAb=sitOrdenadas(proc.flatMap(x=>Object.keys(x.sit))).filter(sitAberta);
+  document.getElementById('ttlProcesso').textContent='Ainda no Processo — '+fmtComp(libMes);
+  document.getElementById('cntProcesso').textContent=`${fmtN(proc.length)} prestador(es) · ${fmtN(proc.reduce((a,x)=>a+x.ab,0))} PEGs em aberto`;
+  renderTable('tblProcesso',[
+    {h:'Prestador',v:x=>prestCell(x.p)},{h:'Tipo',v:x=>esc(x.p.tipo)},
+    {h:'Etapa',v:x=>badge(x.status==='Em processo'?'b-azul':'b-amarelo',x.status)},
+    ...sitAb.map(s=>({h:s.charAt(0)+s.slice(1).toLowerCase(),num:1,v:x=>x.sit[s]?fmtN(x.sit[s]):'·'})),
+    {h:'Em aberto',num:1,v:x=>`<b>${fmtN(x.ab)}</b>`},{h:'Faturados',num:1,v:x=>fmtN(x.fat)}],
+    proc,{vazio:'Todos os prestadores desta competência já estão liberados. 🎉'});
+}
+
+// ============ consultas SQL ============
+function renderSql(){
+  document.getElementById('sqlList').innerHTML=Object.entries(ARQUIVOS).map(([k,a],i)=>{
+    const q=SQL_FIXO[k]||'';
+    const corpo=q?`<pre id="sql-${k}">${esc(q)}</pre>`:'<div class="card-empty">Consulta não cadastrada.</div>';
+    return `<div class="card sql-card">
+      <div class="card-head" style="align-items:center;"><div><h3>${i+1}. ${esc(a.rotulo)}</h3>
+        <p class="hint">${esc(SQL_DESCRICAO[k]||'')}</p></div>
+        ${q?`<button class="btn-refresh btn-copy" data-sql="${k}">📋 Copiar SQL</button>`:''}</div>
+      <div class="sql-meta">Planilha: <code>${esc(a.arquivo.replace(/^dados\//,''))}</code>
+        ${SOURCES[k]?`· ${fmtN(SOURCES[k].length)} linhas`:''}</div>
+      ${corpo}</div>`;
+  }).join('');
+  document.querySelectorAll('.btn-copy').forEach(b=>b.onclick=()=>{
+    const t=SQL_FIXO[b.dataset.sql];
+    const ok=()=>{ b.textContent='✔ Copiado'; setTimeout(()=>b.textContent='📋 Copiar SQL',1800); };
+    if(navigator.clipboard&&window.isSecureContext) navigator.clipboard.writeText(t).then(ok);
+    else { const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove(); ok(); }
+  });
 }
 
 // ============ carga dos arquivos ============
@@ -990,6 +1279,13 @@ function parseWorkbook(buf){
     }
     achados.push({tipo,linhas,aba:nome});
   }
+  // aba "SQL" com a consulta que gerou a planilha
+  const abaSql=wb.SheetNames.find(n=>labelKey(n)==='sql');
+  if(abaSql&&achados.length){
+    const m=XLSX.utils.sheet_to_json(wb.Sheets[abaSql],{header:1,raw:true,defval:null});
+    const texto=m.map(r=>(r||[]).filter(c=>c!==null&&c!=='').map(c=>''+c).join(' ')).join('\n').replace(/\s+$/,'');
+    achados.forEach(a=>a.sql=texto);
+  }
   return achados;
 }
 function aplicarArquivos(lista){   // lista: [{nome, buf}]
@@ -998,10 +1294,11 @@ function aplicarArquivos(lista){   // lista: [{nome, buf}]
     try{
       const achados=parseWorkbook(buf);
       if(!achados.length){ ignorados.push(nome); return; }
-      achados.forEach(a=>{ SOURCES[a.tipo]=a.linhas; SOURCE_INFO[a.tipo]=`${a.linhas.length} linhas de "${nome}" (aba ${a.aba})`; reconhecidos.push(a.tipo); });
+      achados.forEach(a=>{ SOURCES[a.tipo]=a.linhas; SQL_TEXTO[a.tipo]={texto:a.sql||'',arquivo:nome}; SOURCE_INFO[a.tipo]=`${a.linhas.length} linhas de "${nome}" (aba ${a.aba})`; reconhecidos.push(a.tipo); });
     }catch(err){ console.error('[dashboard] erro lendo',nome,err); ignorados.push(nome+' (erro: '+err.message+')'); }
   });
   buildModel(); renderPills();
+  if(!filtroPadraoAplicado&&SOURCES.cadastro){ aplicarFiltroPadrao(); filtroPadraoAplicado=true; }
   const n=Object.values(SOURCES).filter(Boolean).length;
   if(!n){
     setStatus('Nenhum relatório reconhecido','err');
@@ -1092,6 +1389,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active'); document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  document.body.classList.toggle('aba-sql',btn.dataset.tab==='sql');
 }));
 document.querySelectorAll('#viewSwitch button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#viewSwitch button').forEach(x=>x.classList.remove('active'));
