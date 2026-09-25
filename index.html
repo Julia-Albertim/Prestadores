@@ -207,7 +207,7 @@
   <button class="tab-btn" data-tab="cobertura">Cadastro x Envio</button>
   <button class="tab-btn" data-tab="peg">PEG &amp; Situação</button>
   <button class="tab-btn" data-tab="nf">Notas Fiscais</button>
-  <button class="tab-btn" data-tab="liberacao">Liberação p/ Nota</button>
+  <button class="tab-btn" data-tab="liberacao" style="display:none">Liberação p/ Nota</button>
   <button class="tab-btn" data-tab="base">Base de Dados</button>
   <button class="tab-btn" data-tab="sql">Consultas SQL</button>
 </nav>
@@ -385,34 +385,37 @@
   <!-- ===== LIBERAÇÃO ===== -->
   <div class="tab-panel" id="tab-liberacao">
     <div class="nota">
-      Um prestador está <b>liberado para emitir nota fiscal</b> numa competência quando <b>todos os seus PEGs daquela competência estão FATURADOS</b>
-      (PEGs cancelados ou devolvidos não entram na conta). <span id="notaLibNf"></span> Esta aba ignora o filtro de situação do PEG.
+      Etapa de cada PEG, lida direto do sistema: <b>Em análise</b> (ainda sem pagamento gerado) →
+      <b>Liberado, aguardando nota</b> (pagamento gerado na verificação, sem nota fiscal) →
+      <b>Nota recebida</b> (nota ligada ao pagamento, PEG ainda não faturado) → <b>Faturado</b>.
+      Os números contam PEGs; embaixo de cada um aparece quantos prestadores únicos estão naquela etapa.
+      Cancelados e devolvidos ficam de fora. Esta aba ignora o filtro de situação do PEG.
     </div>
     <div class="comp-switch"><span>Competência analisada:</span><div class="view-switch" id="libSwitch"></div></div>
     <div class="kpis" id="libKpis"></div>
     <div class="grid c2">
       <div class="card tall">
-        <h3>Liberação por Competência</h3>
-        <p class="hint">Prestadores únicos em cada etapa, mês a mês</p>
+        <h3>Etapa dos PEGs por Competência</h3>
+        <p class="hint">Quantidade de PEGs em cada etapa, mês a mês — clique numa barra para analisar a competência</p>
         <canvas id="chLibMes"></canvas>
       </div>
       <div class="card tall">
-        <h3 id="ttlLibTipo">Tipo de Prestador x Liberação</h3>
-        <p class="hint">Na competência analisada — clique para filtrar o tipo</p>
+        <h3 id="ttlLibTipo">Tipo de Prestador x Etapa</h3>
+        <p class="hint">PEGs da competência analisada — clique para filtrar o tipo</p>
         <canvas id="chLibTipo"></canvas>
       </div>
     </div>
     <div class="card" style="margin-bottom:15px;">
-      <div class="card-head"><div><h3 id="ttlLiberados">Prestadores Liberados</h3>
-        <p class="hint">Todos os PEGs faturados — primeiro os que ainda não mandaram nota fiscal</p></div>
-        <span class="count-tag" id="cntLiberados"></span></div>
-      <div class="table-wrap"><table id="tblLiberados"><thead></thead><tbody></tbody></table></div>
+      <div class="card-head"><div><h3 id="ttlAguardando">Liberados Aguardando Nota Fiscal</h3>
+        <p class="hint">Prestadores com pagamento gerado e sem nota — lista para cobrar a nota</p></div>
+        <span class="count-tag" id="cntAguardando"></span></div>
+      <div class="table-wrap"><table id="tblAguardando"><thead></thead><tbody></tbody></table></div>
     </div>
     <div class="card">
-      <div class="card-head"><div><h3 id="ttlProcesso">Ainda no Processo</h3>
-        <p class="hint">Têm PEG em digitação, conferência, verificação ou pronto — do que tem mais PEG em aberto para o que tem menos</p></div>
-        <span class="count-tag" id="cntProcesso"></span></div>
-      <div class="table-wrap"><table id="tblProcesso"><thead></thead><tbody></tbody></table></div>
+      <div class="card-head"><div><h3 id="ttlAnalise">Em Análise (sem pagamento gerado)</h3>
+        <p class="hint">PEGs que ainda não chegaram à geração do pagamento — do prestador com mais PEGs parados para o com menos</p></div>
+        <span class="count-tag" id="cntAnalise"></span></div>
+      <div class="table-wrap"><table id="tblAnalise"><thead></thead><tbody></tbody></table></div>
     </div>
   </div>
 
@@ -491,7 +494,7 @@ FROM SAM_PRESTADOR PRE
     LEFT JOIN SAM_TIPOPRESTADOR       TPP  ON TPP.HANDLE  = PRE.TIPOPRESTADOR
 ORDER BY PRE.NOME;`,
 
-pegSit: `SELECT DISTINCT --PRESTADORES QUE ENVIARAM PEG - COMPETÊNCIA CONTÁBIL 07 e 08/2026 - COM SITUAÇÃO
+pegSit: `SELECT DISTINCT --PRESTADORES QUE ENVIARAM PEG - COMPETÊNCIA CONTÁBIL 07 e 08/2026 - COM SITUAÇÃO, PAGAMENTO E NOTA
     PRE.CPFCNPJ                               AS CPF_CNPJ,
     PRE.NOME                                  AS NOME_PRESTADOR,
     PRE.FANTASIA                              AS NOME_FANTASIA_PRESTADOR,
@@ -502,7 +505,14 @@ pegSit: `SELECT DISTINCT --PRESTADORES QUE ENVIARAM PEG - COMPETÊNCIA CONTÁBIL
     TO_CHAR(P.DATACONTABIL, 'MM/YYYY')        AS MES_ANO,
     DECODE(P.SITUACAO,
         1,'DIGITAÇÃO', 2,'CONFERÊNCIA', 3,'PRONTO', 4,'FATURADO',
-        6,'VERIFICAÇÃO', 8,'CANCELADO', 9,'DEVOLVIDO')             AS SITUACAO_PEG
+        6,'VERIFICAÇÃO', 8,'CANCELADO', 9,'DEVOLVIDO')             AS SITUACAO_PEG,
+    CASE WHEN P.AGRUPADORPAGAMENTO IS NOT NULL THEN 'SIM' ELSE 'NAO' END  AS TEM_PAGAMENTO,
+    TO_CHAR(P.DATAHORALIBERACAOPAGAMENTO,'DD/MM/YYYY')                    AS DATA_LIBERACAO_PAGAMENTO,
+    CASE WHEN EXISTS (SELECT 1
+                      FROM SAM_DOCUMENTOFISCAL DF
+                      JOIN SAM_DOCUMENTOFISCAL_NOTA DFN ON DFN.DOCUMENTOFISCAL = DF.HANDLE
+                      WHERE DF.PAGAMENTO = P.AGRUPADORPAGAMENTO)
+         THEN 'SIM' ELSE 'NAO' END                                         AS TEM_NOTA
 FROM SAM_PEG P
     JOIN SAM_GUIA G ON G.PEG = P.HANDLE
     LEFT JOIN SAM_PRESTADOR PRE ON PRE.HANDLE = CASE WHEN P.TABREGIMEPGTO = 2 THEN G.EXECUTOR ELSE P.RECEBEDOR END
@@ -565,7 +575,7 @@ ORDER BY PRE.NOME, MES_ANO`
 // Descrição de cada consulta na aba "Consultas SQL"
 let SQL_DESCRICAO = {
   cadastro:'Cadastro completo de prestadores, com categoria e tipo. É a base para saber quem não enviou nada no período.',
-  pegSit:'Cada PEG do período com o prestador, a data contábil e a situação no fluxo (DECODE de SAM_PEG.SITUACAO). Quando o regime de pagamento é 2, o prestador é o executor da guia; senão, o recebedor do PEG.',
+  pegSit:'Cada PEG do período com o prestador, a data contábil, a situação no fluxo (DECODE de SAM_PEG.SITUACAO) e se já tem pagamento gerado (SAM_PEG.AGRUPADORPAGAMENTO) e nota fiscal ligada a esse pagamento. Quando o regime de pagamento é 2, o prestador é o executor da guia; senão, o recebedor do PEG.',
   pegQtd:'Quantidade de PEGs e de guias por prestador e competência contábil, em todas as situações.',
   notas:'Notas fiscais incluídas no período, ligadas ao prestador recebedor do pagamento. A competência é o mês de inclusão da nota.'
 };
@@ -581,10 +591,10 @@ const PALETA = [COLORS.azul,COLORS.verde,COLORS.azulClaro,COLORS.amarelo,COLORS.
 
 const SIT_COLORS = {'DIGITAÇÃO':COLORS.cinza,'CONFERÊNCIA':COLORS.azulClaro,'VERIFICAÇÃO':COLORS.amarelo,
   'PRONTO':COLORS.roxo,'FATURADO':COLORS.verde,'DEVOLVIDO':COLORS.laranja,'CANCELADO':COLORS.vermelho};
-const MOV_ORDEM = ['PEG e Nota Fiscal','Somente PEG','Somente Nota Fiscal','Sem envio'];
-const MOV_COLORS = {'PEG e Nota Fiscal':COLORS.verdeEscuro,'Somente PEG':COLORS.azul,
-  'Somente Nota Fiscal':COLORS.roxo,'Sem envio':'#C9CFDC'};
-const MOV_BADGE = {'PEG e Nota Fiscal':'b-verde','Somente PEG':'b-azul','Somente Nota Fiscal':'b-roxo','Sem envio':'b-cinza'};
+const MOV_ORDEM = ['Enviou PEG e nota','Só PEG (sem nota)','Só nota (sem PEG)','Não enviou nada'];
+const MOV_COLORS = {'Enviou PEG e nota':COLORS.verdeEscuro,'Só PEG (sem nota)':COLORS.azul,
+  'Só nota (sem PEG)':COLORS.roxo,'Não enviou nada':'#C9CFDC'};
+const MOV_BADGE = {'Enviou PEG e nota':'b-verde','Só PEG (sem nota)':'b-azul','Só nota (sem PEG)':'b-roxo','Não enviou nada':'b-cinza'};
 const SIT_BADGE = {'FATURADO':'b-verde','VERIFICAÇÃO':'b-amarelo','CONFERÊNCIA':'b-azul','PRONTO':'b-roxo',
   'DIGITAÇÃO':'b-cinza','CANCELADO':'b-vermelho','DEVOLVIDO':'b-vermelho'};
 
@@ -667,7 +677,9 @@ function buildModel(){
   (SOURCES.pegSit||[]).forEach(r=>{
     const p=add(r,false); if(!p) return;
     const d=toDate(r.DATA_CONTABIL);
-    PEGS.push({cpf:p.cpf, peg:r.PEG, data:ymd(d), mes:parseMesAno(r.MES_ANO,d), situacao:normSituacao(r.SITUACAO_PEG)});
+    const sn=v=>v===undefined?null:labelKey(v)==='sim';
+    PEGS.push({cpf:p.cpf, peg:r.PEG, data:ymd(d), mes:parseMesAno(r.MES_ANO,d), situacao:normSituacao(r.SITUACAO_PEG),
+      temPag:sn(r.TEM_PAGAMENTO), temNota:sn(r.TEM_NOTA)});
   });
   (SOURCES.pegQtd||[]).forEach(r=>{
     const p=add(r,false); if(!p) return;
@@ -693,8 +705,8 @@ function buildModel(){
 }
 
 // ============ filtros ============
-const FIELDS=['mes','categoria','tipo','situacao','movimento'];
-const FIELD_LABELS={mes:'Competência',categoria:'Categoria',tipo:'Tipo de prestador',situacao:'Situação do PEG',movimento:'Movimento'};
+const FIELDS=['mes','categoria','tipo','situacao','notaPeg','movimento'];
+const FIELD_LABELS={mes:'Competência',categoria:'Categoria',tipo:'Tipo de prestador',situacao:'Situação do PEG',notaPeg:'Nota fiscal do PEG',movimento:'Prestador enviou'};
 const FIELD_DISPLAY={mes:fmtComp};
 let filters={}; FIELDS.forEach(f=>filters[f]=new Set());
 let filtersOpen=false;
@@ -702,6 +714,7 @@ let filtersOpen=false;
 function uniqueValues(field){
   if(field==='mes') return ALL_MESES;
   if(field==='movimento') return MOV_ORDEM;
+  if(field==='notaPeg'){ const s=new Set(PEGS.map(notaDoPeg).filter(Boolean)); return NOTA_PEG_ORDEM.filter(x=>s.has(x)); }
   if(field==='situacao'){ const s=new Set(PEGS.map(p=>p.situacao));
     return [...SIT_ORDEM.filter(x=>s.has(x)),...[...s].filter(x=>!SIT_ORDEM.includes(x))]; }
   const c={}; PRESTS.forEach(p=>c[p[field]]=(c[p[field]]||0)+1);
@@ -767,13 +780,25 @@ function buildFilterPanel(){
   panel.appendChild(body);
 }
 
+// ============ nota fiscal por PEG (colunas TEM_PAGAMENTO / TEM_NOTA) ============
+const NOTA_PEG_ORDEM=['Com nota','Sem nota · pag. gerado','Sem nota · sem pagamento'];
+function notaDoPeg(r){
+  if(r.temNota===null||r.temNota===undefined) return null;
+  if(r.temNota) return 'Com nota';
+  return r.temPag?'Sem nota · pag. gerado':'Sem nota · sem pagamento';
+}
+
 // ============ recorte (aplica filtros e agrega por prestador) ============
 function computeView(){
   const mesOK=m=>!filters.mes.size||filters.mes.has(m);
   const sitOK=s=>!filters.situacao.size||filters.situacao.has(s);
   const usaDetalhe=PEGS.length>0;
   const meses=filters.mes.size?ALL_MESES.filter(m=>filters.mes.has(m)):ALL_MESES;
-  let pegs=PEGS.filter(r=>mesOK(r.mes)&&sitOK(r.situacao));
+  const notaOK=r=>!filters.notaPeg.size||filters.notaPeg.has(notaDoPeg(r));
+  // "Prestador enviou" olha tudo o que o prestador mandou na(s) competência(s), sem os filtros de situação/nota do PEG
+  const enviouPeg=new Set((usaDetalhe?PEGS:QTDS).filter(r=>mesOK(r.mes)).map(r=>r.cpf));
+  const enviouNota=new Set(NOTAS.filter(r=>mesOK(r.mes)).map(r=>r.cpf));
+  let pegs=PEGS.filter(r=>mesOK(r.mes)&&sitOK(r.situacao)&&notaOK(r));
   let qtds=QTDS.filter(r=>mesOK(r.mes));
   let notas=NOTAS.filter(r=>mesOK(r.mes));
 
@@ -792,7 +817,9 @@ function computeView(){
     if(filters.categoria.size&&!filters.categoria.has(p.categoria)) return;
     if(filters.tipo.size&&!filters.tipo.has(p.tipo)) return;
     const a=agg[p.cpf]||vazio;
-    const movimento=a.peg>0?(a.nNotas>0?'PEG e Nota Fiscal':'Somente PEG'):(a.nNotas>0?'Somente Nota Fiscal':'Sem envio');
+    const eP=enviouPeg.has(p.cpf), eN=enviouNota.has(p.cpf);
+    const movimento=eP?(eN?'Enviou PEG e nota':'Só PEG (sem nota)'):(eN?'Só nota (sem PEG)':'Não enviou nada');
+    if((filters.notaPeg.size||filters.situacao.size)&&a.peg===0) return;   // filtros do PEG: só prestadores com PEG nessa condição
     if(filters.movimento.size&&!filters.movimento.has(movimento)) return;
     let regularidade=null;
     if(a.peg>0&&meses.length>=2){
@@ -812,7 +839,7 @@ function renderKpis(V){
   const temCad=!!SOURCES.cadastro;
   const cad=V.prests.filter(p=>p.noCadastro).length;
   const enviaram=V.prests.filter(p=>p.peg>0).length;
-  const semEnvio=V.prests.filter(p=>p.movimento==='Sem envio').length;
+  const semEnvio=V.prests.filter(p=>p.movimento==='Não enviou nada').length;
   const totPeg=V.prests.reduce((a,p)=>a+p.peg,0);
   const totGuia=V.prests.reduce((a,p)=>a+p.guia,0);
   const fat=V.pegs.filter(r=>sitFaturada(r.situacao)).length;
@@ -823,7 +850,8 @@ function renderKpis(V){
     ['neutro',temCad?fmtN(cad):'—','Prestadores no cadastro',temCad?'no recorte dos filtros':'relatório não carregado'],
     ['ok',fmtN(enviaram),'Prestadores que enviaram PEG','únicos por CPF/CNPJ'+(temCad?' · '+fmtPct(enviaram,V.prests.length)+' do recorte':'')],
     ['bad',temCad?fmtN(semEnvio):'—','Sem nenhum envio',temCad?fmtPct(semEnvio,V.prests.length)+' do recorte':''],
-    ['info',fmtN(totPeg),'PEGs no período',V.meses.length+' competência(s)'],
+    ['info',fmtN(totPeg),'PEGs no período',(()=>{ const c=V.pegs.filter(r=>r.temNota===true).length, sn=V.pegs.filter(r=>r.temNota===false).length;
+      return (c+sn)?fmtN(c)+' com nota · '+fmtN(sn)+' sem nota':V.meses.length+' competência(s)'; })()],
     ['info',SOURCES.pegQtd?fmtN(totGuia):'—','Guias nos PEGs',totPeg?'média de '+(totGuia/totPeg).toLocaleString('pt-BR',{maximumFractionDigits:1})+' por PEG':''],
     ['ok',V.usaDetalhe?fmtPct(fat,V.pegs.length):'—','PEGs faturados',V.usaDetalhe?fmtN(fat)+' PEGs':''],
     ['warn',V.usaDetalhe?fmtN(aberto):'—','PEGs em aberto',V.usaDetalhe?fmtPct(aberto,V.pegs.length)+' ainda não faturados':''],
@@ -1021,7 +1049,7 @@ function renderTables(V){
       renderTable('tbl'+k,[COL_PREST],[],{vazio:'Selecione ao menos duas competências para comparar.'}); });
   }
   // --- sem envio ---
-  const sem=P.filter(p=>p.movimento==='Sem envio'&&p.noCadastro).sort((a,b)=>a.tipo.localeCompare(b.tipo)||a.nome.localeCompare(b.nome));
+  const sem=P.filter(p=>p.movimento==='Não enviou nada'&&p.noCadastro).sort((a,b)=>a.tipo.localeCompare(b.tipo)||a.nome.localeCompare(b.nome));
   document.getElementById('cntSemEnvio').textContent=fmtN(sem.length)+' prestador(es)';
   renderTable('tblSemEnvio',[COL_PREST,COL_DOC,COL_CAT,COL_TIPO],sem,
     {vazio:SOURCES.cadastro?'Todos os prestadores do recorte enviaram algo.':'Carregue o relatório de cadastro de prestadores para ver esta lista.'});
@@ -1070,7 +1098,10 @@ function baseSpec(V){
       {h:'Tipo',v:r=>esc(PREST_MAP[r.cpf].tipo),csv:r=>PREST_MAP[r.cpf].tipo},
       {h:'Data contábil',v:r=>fmtData(r.data),csv:r=>fmtData(r.data)},
       {h:'Competência',v:r=>fmtComp(r.mes),csv:r=>fmtComp(r.mes)},
-      {h:'Situação',v:r=>badge(SIT_BADGE[r.situacao]||'b-cinza',r.situacao),csv:r=>r.situacao}],
+      {h:'Situação',v:r=>badge(SIT_BADGE[r.situacao]||'b-cinza',r.situacao),csv:r=>r.situacao},
+      {h:'Pagamento gerado',v:r=>r.temPag===null?'—':r.temPag?'Sim':'Não',csv:r=>r.temPag===null?'':r.temPag?'Sim':'Não'},
+      {h:'Nota fiscal',v:r=>r.temNota===null?'—':r.temNota?'Sim':'Não',csv:r=>r.temNota===null?'':r.temNota?'Sim':'Não'},
+      {h:'Etapa',v:r=>{const e=etapaPeg(r); return e?badge(ETAPA_BADGE[e],e):'—';},csv:r=>etapaPeg(r)||''}],
       text:r=>{const p=PREST_MAP[r.cpf]; return [r.peg,p.nome,p.fantasia,p.doc,p.cpf,p.tipo,r.situacao].join(' ');}};
   }
   if(baseView==='notas'){
@@ -1133,9 +1164,6 @@ function renderAll(){
   document.getElementById('notaNf').innerHTML=vinc
     ?'Cada nota fiscal está ligada aos PEGs que ela paga (pelo agrupador de pagamento), então a <b>competência da nota é a competência contábil desses PEGs</b> — uma nota incluída em agosto referente a PEGs de julho conta em julho. "Defasagem" = meses entre a emissão da nota e a inclusão no sistema.'
     :'A competência da nota fiscal é o <b>mês de inclusão</b> no sistema (a consulta atual não liga a nota ao PEG). "Defasagem" = meses entre a emissão da nota e a inclusão no sistema.';
-  document.getElementById('notaLibNf').innerHTML=vinc
-    ?'"Com nota" = tem nota fiscal ligada aos PEGs daquela competência.'
-    :'"Com nota" = tem nota fiscal incluída naquela competência ou depois, já que a nota costuma chegar no mês seguinte.';
   SQL_DESCRICAO.notas=vinc
     ?'Notas fiscais ligadas aos PEGs que pagam, pelo agrupador de pagamento (SAM_PEG.AGRUPADORPAGAMENTO = SAM_DOCUMENTOFISCAL.PAGAMENTO). A competência é a data contábil dos PEGs; o mês de inclusão da nota vem à parte.'
     :'Notas fiscais incluídas no período, ligadas ao prestador recebedor do pagamento. A competência é o mês de inclusão da nota.';
@@ -1143,83 +1171,84 @@ function renderAll(){
 }
 
 // ============ liberação para nota fiscal ============
-const LIB_ORDEM=['Liberado com nota','Liberado aguardando nota','Parcialmente liberado','Em processo'];
-const LIB_COLORS={'Liberado com nota':COLORS.verdeEscuro,'Liberado aguardando nota':COLORS.verde,
-  'Parcialmente liberado':COLORS.amarelo,'Em processo':COLORS.azulClaro};
-const LIB_KPI={'Liberado com nota':'ok','Liberado aguardando nota':'ok','Parcialmente liberado':'warn','Em processo':'info'};
-const LIB_BADGE={'Liberado com nota':'b-verde','Liberado aguardando nota':'b-amarelo'};
-let libMes=null;
-
-// status de cada prestador em cada competência (usa todos os PEGs, ignora o filtro de situação)
-function statusLiberacao(V){
-  const set=new Set(V.prests.map(p=>p.cpf)), mesesSet=new Set(V.meses);
-  const por={};   // mes -> cpf -> {fat, ab, sit}
-  PEGS.forEach(r=>{
-    if(!set.has(r.cpf)||!mesesSet.has(r.mes)) return;
-    const fat=sitFaturada(r.situacao), ab=sitAberta(r.situacao); if(!fat&&!ab) return;
-    const m=(por[r.mes]=por[r.mes]||{}), x=(m[r.cpf]=m[r.cpf]||{fat:0,ab:0,sit:{}});
-    fat?x.fat++:x.ab++; x.sit[r.situacao]=(x.sit[r.situacao]||0)+1;
-  });
-  const notasPor={}; NOTAS.forEach(n=>(notasPor[n.cpf]=notasPor[n.cpf]||[]).push(n));
-  const guias={}; QTDS.forEach(q=>guias[q.cpf+'|'+q.mes]=q.guias);
-  const out={};
-  V.meses.forEach(mes=>{
-    out[mes]=Object.entries(por[mes]||{}).map(([cpf,x])=>{
-      const notas=(notasPor[cpf]||[]).filter(n=>n.vinculada?(n.mes<=mes&&mes<=(n.mesUltimo||n.mes)):(n.mes&&n.mes>=mes));
-      const status=x.ab===0?(notas.length?'Liberado com nota':'Liberado aguardando nota'):(x.fat>0?'Parcialmente liberado':'Em processo');
-      return {p:PREST_MAP[cpf],status,fat:x.fat,ab:x.ab,sit:x.sit,guias:guias[cpf+'|'+mes]||0,
-        nNotas:notas.length,valorNotas:notas.reduce((a,n)=>a+n.valor,0)};
-    });
-  });
-  return out;
+// Etapa de cada PEG a partir das colunas TEM_PAGAMENTO e TEM_NOTA da consulta de PEG
+const ETAPAS=['Em análise','Liberado, aguardando nota','Nota recebida','Faturado'];
+const ETAPA_COLORS={'Em análise':COLORS.cinza,'Liberado, aguardando nota':COLORS.amarelo,'Nota recebida':COLORS.azulClaro,'Faturado':COLORS.verdeEscuro};
+const ETAPA_KPI={'Em análise':'neutro','Liberado, aguardando nota':'warn','Nota recebida':'info','Faturado':'ok'};
+const ETAPA_BADGE={'Em análise':'b-cinza','Liberado, aguardando nota':'b-amarelo','Nota recebida':'b-azul','Faturado':'b-verde'};
+function etapaPeg(r){
+  const k=labelKey(r.situacao);
+  if(k==='cancelado'||k==='devolvido') return null;
+  if(k===SIT_FATURADO) return 'Faturado';
+  if(r.temPag===null) return null;
+  if(r.temNota) return 'Nota recebida';
+  if(r.temPag) return 'Liberado, aguardando nota';
+  return 'Em análise';
 }
+let libMes=null;
 function renderLiberacao(V){
   const sw=document.getElementById('libSwitch');
-  if(!V.usaDetalhe){ sw.innerHTML=''; document.getElementById('libKpis').innerHTML='<div class="card-empty">Carregue o relatório "PEG com situação" para ver a liberação.</div>'; return; }
-  if(!V.meses.includes(libMes)) libMes=V.meses[V.meses.length-1];
+  const temColunas=PEGS.some(r=>r.temPag!==null);
+  const vazio=msg=>{ sw.innerHTML=''; document.getElementById('libKpis').innerHTML=`<div class="card-empty">${msg}</div>`;
+    ['libMes','libTipo'].forEach(k=>{ if(charts[k]){charts[k].destroy(); delete charts[k];} });
+    renderTable('tblAguardando',[COL_PREST],[],{vazio:'—'}); renderTable('tblAnalise',[COL_PREST],[],{vazio:'—'}); };
+  if(!V.usaDetalhe) return vazio('Carregue o relatório "PEG com situação" para ver a liberação.');
+  if(!temColunas) return vazio('A planilha de PEG carregada não tem as colunas TEM_PAGAMENTO e TEM_NOTA. Rode a consulta atualizada (aba Consultas SQL) e substitua dados/peg_situacao.xlsx.');
+
+  if(!V.meses.includes(libMes)) libMes=V.meses[0];
   sw.innerHTML=V.meses.map(m=>`<button data-mes="${m}" class="${m===libMes?'active':''}">${fmtComp(m)}</button>`).join('');
   sw.querySelectorAll('button').forEach(b=>b.onclick=()=>{ libMes=b.dataset.mes; renderLiberacao(LAST_VIEW); });
-  const S=statusLiberacao(V), L=S[libMes]||[];
-  const cont={}; L.forEach(x=>cont[x.status]=(cont[x.status]||0)+1);
-  const libTot=(cont['Liberado com nota']||0)+(cont['Liberado aguardando nota']||0);
+
+  const set=new Set(V.prests.map(p=>p.cpf)), mesesSet=new Set(V.meses);
+  const pegs=PEGS.filter(r=>set.has(r.cpf)&&mesesSet.has(r.mes)).map(r=>({...r,etapa:etapaPeg(r)})).filter(r=>r.etapa);
+  const doMes=pegs.filter(r=>r.mes===libMes);
+
+  // KPIs: PEGs por etapa + prestadores únicos
+  const cont={},prest={}; doMes.forEach(r=>{ cont[r.etapa]=(cont[r.etapa]||0)+1; (prest[r.etapa]=prest[r.etapa]||new Set()).add(r.cpf); });
   document.getElementById('libKpis').innerHTML=
-    `<div class="kpi neutro"><div class="num">${fmtN(L.length)}</div><div class="lbl">Prestadores com PEG</div><div class="sub">em ${fmtComp(libMes)} (únicos)</div></div>
-     <div class="kpi ok"><div class="num">${fmtN(libTot)}</div><div class="lbl">Liberados p/ nota</div><div class="sub">${fmtPct(libTot,L.length)} dos que enviaram PEG</div></div>`+
-    LIB_ORDEM.map(s=>`<div class="kpi ${LIB_KPI[s]}"><div class="num">${fmtN(cont[s]||0)}</div><div class="lbl">${s}</div><div class="sub">${fmtPct(cont[s]||0,L.length)}</div></div>`).join('');
+    `<div class="kpi neutro"><div class="num">${fmtN(doMes.length)}</div><div class="lbl">PEGs em ${fmtComp(libMes)}</div><div class="sub">${fmtN(new Set(doMes.map(r=>r.cpf)).size)} prestadores únicos</div></div>`+
+    ETAPAS.map(e=>`<div class="kpi ${ETAPA_KPI[e]}"><div class="num">${fmtN(cont[e]||0)}</div><div class="lbl">${e}</div>
+      <div class="sub">${fmtPct(cont[e]||0,doMes.length)} dos PEGs · ${fmtN(prest[e]?prest[e].size:0)} prestador(es)</div></div>`).join('');
 
   drawChart('libMes','chLibMes',{type:'bar',
-    data:{labels:V.meses.map(fmtComp),datasets:LIB_ORDEM.map(s=>({label:s,backgroundColor:LIB_COLORS[s],borderRadius:3,maxBarThickness:70,
-      data:V.meses.map(m=>(S[m]||[]).filter(x=>x.status===s).length)}))},
-    options:{...OPT_STACK,onClick:(e,els,ch)=>{ if(els.length){ libMes=V.meses[els[0].index]; renderLiberacao(LAST_VIEW);} }}});
+    data:{labels:V.meses.map(fmtComp),datasets:ETAPAS.map(e=>({label:e,backgroundColor:ETAPA_COLORS[e],borderRadius:3,maxBarThickness:70,
+      data:V.meses.map(m=>pegs.filter(r=>r.mes===m&&r.etapa===e).length)}))},
+    options:{...OPT_STACK,onClick:(ev,els)=>{ if(els.length){ libMes=V.meses[els[0].index]; renderLiberacao(LAST_VIEW);} }}});
 
-  const t={}; L.forEach(x=>{ const k=x.p.tipo; (t[k]=t[k]||{_t:0}); t[k][x.status]=(t[k][x.status]||0)+1; t[k]._t++; });
+  const t={}; doMes.forEach(r=>{ const k=PREST_MAP[r.cpf].tipo; (t[k]=t[k]||{_t:0}); t[k][r.etapa]=(t[k][r.etapa]||0)+1; t[k]._t++; });
   const tL=Object.keys(t).sort((a,b)=>t[b]._t-t[a]._t);
-  document.getElementById('ttlLibTipo').textContent='Tipo de Prestador x Liberação — '+fmtComp(libMes);
+  document.getElementById('ttlLibTipo').textContent='Tipo de Prestador x Etapa — '+fmtComp(libMes);
   drawChart('libTipo','chLibTipo',{type:'bar',
-    data:{labels:tL,datasets:LIB_ORDEM.map(s=>({label:s,data:tL.map(k=>t[k][s]||0),backgroundColor:LIB_COLORS[s],borderRadius:3}))},
+    data:{labels:tL,datasets:ETAPAS.map(e=>({label:e,data:tL.map(k=>t[k][e]||0),backgroundColor:ETAPA_COLORS[e],borderRadius:3}))},
     options:{...OPT_STACKH,onClick:clickFilter('tipo'),scales:{...OPT_STACKH.scales,y:{stacked:true,...yTicks(30)}}}});
 
-  const lib=L.filter(x=>x.status.startsWith('Liberado'))
-    .sort((a,b)=>(a.status===b.status?0:a.status==='Liberado aguardando nota'?-1:1)||b.fat-a.fat);
-  document.getElementById('ttlLiberados').textContent='Prestadores Liberados — '+fmtComp(libMes);
-  document.getElementById('cntLiberados').textContent=`${fmtN(lib.length)} prestador(es) · ${fmtN(cont['Liberado aguardando nota']||0)} aguardando nota`;
-  renderTable('tblLiberados',[
-    {h:'Prestador',v:x=>prestCell(x.p)},{h:'CPF / CNPJ',cls:'doc',v:x=>x.p.doc},{h:'Tipo',v:x=>esc(x.p.tipo)},
-    {h:'PEGs faturados',num:1,v:x=>fmtN(x.fat)},{h:'Guias',num:1,v:x=>SOURCES.pegQtd?fmtN(x.guias):'—'},
-    {h:'Nota fiscal',v:x=>badge(LIB_BADGE[x.status],x.status==='Liberado com nota'?'Com nota':'Aguardando nota')},
-    {h:'Notas',num:1,v:x=>x.nNotas?fmtN(x.nNotas):'·'},{h:'Valor notas',num:1,v:x=>x.valorNotas?fmtBRL(x.valorNotas):'·'}],
-    lib,{vazio:'Nenhum prestador com todos os PEGs faturados nesta competência.'});
+  // agrega por prestador
+  const porP={}; doMes.forEach(r=>{ const x=(porP[r.cpf]=porP[r.cpf]||{p:PREST_MAP[r.cpf],e:{},sit:{},total:0,pegs:[]});
+    x.e[r.etapa]=(x.e[r.etapa]||0)+1; x.total++;
+    if(r.etapa==='Em análise') x.sit[r.situacao]=(x.sit[r.situacao]||0)+1;
+    if(r.etapa==='Liberado, aguardando nota') x.pegs.push(r.peg); });
+  const L=Object.values(porP);
+  const E=(x,e)=>x.e[e]||0;
+  const cel=e=>({h:e==='Liberado, aguardando nota'?'Aguardando nota':e,num:1,v:x=>E(x,e)?fmtN(E(x,e)):'·'});
 
-  const proc=L.filter(x=>!x.status.startsWith('Liberado')).sort((a,b)=>b.ab-a.ab||b.fat-a.fat);
-  const sitAb=sitOrdenadas(proc.flatMap(x=>Object.keys(x.sit))).filter(sitAberta);
-  document.getElementById('ttlProcesso').textContent='Ainda no Processo — '+fmtComp(libMes);
-  document.getElementById('cntProcesso').textContent=`${fmtN(proc.length)} prestador(es) · ${fmtN(proc.reduce((a,x)=>a+x.ab,0))} PEGs em aberto`;
-  renderTable('tblProcesso',[
-    {h:'Prestador',v:x=>prestCell(x.p)},{h:'Tipo',v:x=>esc(x.p.tipo)},
-    {h:'Etapa',v:x=>badge(x.status==='Em processo'?'b-azul':'b-amarelo',x.status)},
-    ...sitAb.map(s=>({h:s.charAt(0)+s.slice(1).toLowerCase(),num:1,v:x=>x.sit[s]?fmtN(x.sit[s]):'·'})),
-    {h:'Em aberto',num:1,v:x=>`<b>${fmtN(x.ab)}</b>`},{h:'Faturados',num:1,v:x=>fmtN(x.fat)}],
-    proc,{vazio:'Todos os prestadores desta competência já estão liberados. 🎉'});
+  const ag=L.filter(x=>E(x,'Liberado, aguardando nota')).sort((a,b)=>E(b,'Liberado, aguardando nota')-E(a,'Liberado, aguardando nota'));
+  document.getElementById('ttlAguardando').textContent='Liberados Aguardando Nota Fiscal — '+fmtComp(libMes);
+  document.getElementById('cntAguardando').textContent=`${fmtN(ag.length)} prestador(es) · ${fmtN(cont['Liberado, aguardando nota']||0)} PEGs`;
+  renderTable('tblAguardando',[{h:'Prestador',v:x=>prestCell(x.p)},{h:'CPF / CNPJ',cls:'doc',v:x=>x.p.doc},{h:'Tipo',v:x=>esc(x.p.tipo)},
+    {h:'Aguardando nota',num:1,v:x=>`<b>${fmtN(E(x,'Liberado, aguardando nota'))}</b>`},
+    cel('Nota recebida'),cel('Faturado'),cel('Em análise'),{h:'Total PEGs',num:1,v:x=>fmtN(x.total)},
+    {h:'PEGs aguardando nota',v:x=>`<span class="fant" style="max-width:260px;white-space:normal;">${esc(x.pegs.sort((a,b)=>a-b).join(', '))}</span>`}],
+    ag,{vazio:'Nenhum PEG com pagamento gerado aguardando nota nesta competência.'});
+
+  const an=L.filter(x=>E(x,'Em análise')).sort((a,b)=>E(b,'Em análise')-E(a,'Em análise'));
+  const sitAn=sitOrdenadas(an.flatMap(x=>Object.keys(x.sit)));
+  document.getElementById('ttlAnalise').textContent='Em Análise (sem pagamento gerado) — '+fmtComp(libMes);
+  document.getElementById('cntAnalise').textContent=`${fmtN(an.length)} prestador(es) · ${fmtN(cont['Em análise']||0)} PEGs`;
+  renderTable('tblAnalise',[{h:'Prestador',v:x=>prestCell(x.p)},{h:'Tipo',v:x=>esc(x.p.tipo)},
+    ...sitAn.map(st=>({h:st.charAt(0)+st.slice(1).toLowerCase(),num:1,v:x=>x.sit[st]?fmtN(x.sit[st]):'·'})),
+    {h:'Em análise',num:1,v:x=>`<b>${fmtN(E(x,'Em análise'))}</b>`},cel('Liberado, aguardando nota'),cel('Nota recebida'),cel('Faturado'),
+    {h:'Total PEGs',num:1,v:x=>fmtN(x.total)}],
+    an,{vazio:'Todos os PEGs desta competência já passaram da geração do pagamento. 🎉'});
 }
 
 // ============ consultas SQL ============

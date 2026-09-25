@@ -36,8 +36,9 @@ O painel abre filtrado em todas as categorias de prestador **menos reembolso (PF
 "Limpar filtros" mostra tudo; "↺ Filtro padrão" volta ao recorte inicial. Para mudar, edite `CATEGORIAS_FORA_DO_PADRAO` no `index.html`.
 
 ## Liberação para nota fiscal
-Um prestador está liberado numa competência quando todos os seus PEGs daquela competência estão FATURADOS
-(cancelados/devolvidos não contam). "Com nota" = tem nota incluída naquela competência ou depois.
+A aba usa as colunas TEM_PAGAMENTO e TEM_NOTA da consulta de PEG. Etapas de cada PEG:
+Em análise (sem pagamento gerado) → Liberado, aguardando nota (pagamento gerado, sem nota) → Nota recebida → Faturado.
 
 ## Consultas SQL
-A aba "Consultas SQL" mostra o texto da aba **SQL** de cada planilha, então basta manter essa aba ao exportar.
+As consultas ficam fixas no `index.html` (constante `SQL_FIXO`) e aparecem na aba "Consultas SQL".
+Não é preciso exportar a aba SQL. Se alterar uma consulta no Oracle, atualize o texto em `SQL_FIXO`.
