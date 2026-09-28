@@ -113,8 +113,11 @@
   .card{background:var(--card);border:1px solid var(--borda);border-radius:12px;padding:16px 18px 10px;}
   .card h3{margin:0 0 3px;font-size:14.5px;}
   .card p.hint{margin:0 0 10px;font-size:11.5px;color:var(--texto-suave);}
-  .card canvas{max-height:290px;}
-  .tall canvas{max-height:340px;}
+  /* gráficos: caixa com altura fixa e largura livre (evita o gráfico esticar a página) */
+  .grid > *{min-width:0;}
+  .chart-box{position:relative;width:100%;height:280px;}
+  .tall .chart-box{height:340px;}
+  .chart-box canvas{position:absolute;inset:0;}
 
   table{width:100%;border-collapse:collapse;font-size:12.6px;}
   th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--borda);vertical-align:top;}
@@ -151,6 +154,35 @@
   .kpi .sub{font-size:11px;color:var(--texto-suave);margin-top:2px;}
   .kpi.roxo{border-top-color:var(--roxo);}
   .grid.c1{grid-template-columns:1fr;}
+  html,body{max-width:100%;overflow-x:hidden;}
+  main{max-width:1920px;margin:0 auto;}
+  .databar-status{flex-wrap:wrap;}
+  /* notebook */
+  @media(max-width:1280px){
+    .grid.c3{grid-template-columns:1fr 1fr;}
+    .grid.c3 > :first-child{grid-column:1 / -1;}
+  }
+  /* celular */
+  @media(max-width:720px){
+    header{padding:14px 16px;}
+    .brand img{height:42px;}
+    .brand h1{font-size:16px;}
+    .updated{text-align:left;}
+    .databar{padding:8px 14px;}
+    .file-pills{display:none;}
+    nav.tabs{padding:0 8px;}
+    nav.tabs button{padding:12px 11px;font-size:13px;white-space:nowrap;}
+    main{padding:14px 12px 40px;}
+    .card{padding:14px 12px 8px;}
+    .grid.c2,.grid.c3{grid-template-columns:1fr;}
+    .grid.c3 > :first-child{grid-column:auto;}
+    .chart-box{height:240px;}
+    .tall .chart-box{height:300px;}
+    .kpi .num{font-size:22px;}
+    .search-row{flex-wrap:wrap;}
+    .search-row input{min-width:0;width:100%;}
+    .filters-head{flex-wrap:wrap;}
+  }
   .card .table-wrap.short{max-height:360px;}
   td.num,th.num{text-align:right;white-space:nowrap;}
   td.doc{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--texto-suave);}
@@ -602,6 +634,12 @@ Chart.defaults.font.family = "'Segoe UI',Roboto,Arial,sans-serif";
 Chart.defaults.font.size = 12;
 Chart.defaults.color = '#6B7690';
 Chart.defaults.locale = 'pt-BR';
+Chart.defaults.maintainAspectRatio = false;
+// cada gráfico fica dentro de uma caixa de altura fixa (ver .chart-box no CSS)
+document.querySelectorAll('.card canvas').forEach(c=>{
+  const box=document.createElement('div'); box.className='chart-box';
+  c.parentNode.insertBefore(box,c); box.appendChild(c);
+});
 
 // ============ utilidades ============
 function stripAccents(s){ return (''+s).normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
@@ -713,7 +751,15 @@ let filtersOpen=false;
 
 function uniqueValues(field){
   if(field==='mes') return ALL_MESES;
-  if(field==='movimento') return MOV_ORDEM;
+  if(field==='movimento'){
+    // esconde opções que não acontecem em nenhuma competência (ex.: "Só nota (sem PEG)")
+    const presentes=new Set(ALL_MESES.flatMap(m=>{
+      const eP=new Set([...PEGS,...QTDS].filter(r=>r.mes===m).map(r=>r.cpf));
+      const eN=new Set([...NOTAS.filter(r=>r.mes===m).map(r=>r.cpf),...PEGS.filter(r=>r.mes===m&&r.temNota===true).map(r=>r.cpf)]);
+      return PRESTS.map(p=>eP.has(p.cpf)?(eN.has(p.cpf)?'Enviou PEG e nota':'Só PEG (sem nota)'):(eN.has(p.cpf)?'Só nota (sem PEG)':'Não enviou nada'));
+    }));
+    return MOV_ORDEM.filter(m=>presentes.has(m)||filters.movimento.has(m));
+  }
   if(field==='notaPeg'){ const s=new Set(PEGS.map(notaDoPeg).filter(Boolean)); return NOTA_PEG_ORDEM.filter(x=>s.has(x)); }
   if(field==='situacao'){ const s=new Set(PEGS.map(p=>p.situacao));
     return [...SIT_ORDEM.filter(x=>s.has(x)),...[...s].filter(x=>!SIT_ORDEM.includes(x))]; }
@@ -797,7 +843,10 @@ function computeView(){
   const notaOK=r=>!filters.notaPeg.size||filters.notaPeg.has(notaDoPeg(r));
   // "Prestador enviou" olha tudo o que o prestador mandou na(s) competência(s), sem os filtros de situação/nota do PEG
   const enviouPeg=new Set((usaDetalhe?PEGS:QTDS).filter(r=>mesOK(r.mes)).map(r=>r.cpf));
-  const enviouNota=new Set(NOTAS.filter(r=>mesOK(r.mes)).map(r=>r.cpf));
+  // nota do prestador: pela planilha de notas (quem recebe o pagamento) OU pelo próprio PEG (TEM_NOTA),
+  // para que "Prestador enviou" e "Nota fiscal do PEG" usem a mesma regra
+  const enviouNota=new Set([...NOTAS.filter(r=>mesOK(r.mes)).map(r=>r.cpf),
+                            ...PEGS.filter(r=>mesOK(r.mes)&&r.temNota===true).map(r=>r.cpf)]);
   let pegs=PEGS.filter(r=>mesOK(r.mes)&&sitOK(r.situacao)&&notaOK(r));
   let qtds=QTDS.filter(r=>mesOK(r.mes));
   let notas=NOTAS.filter(r=>mesOK(r.mes));
@@ -936,7 +985,7 @@ function renderCharts(V){
   const reg={}; P.forEach(p=>{ if(p.regularidade) reg[p.regularidade]=(reg[p.regularidade]||0)+1; });
   const regL=Object.keys(reg).sort((a,b)=>a.startsWith('Enviou')?-1:b.startsWith('Enviou')?1:a.localeCompare(b));
   const temReg=V.meses.length>=2&&regL.length;
-  document.getElementById('chRegularidade').style.display=temReg?'':'none';
+  document.getElementById('chRegularidade').parentElement.style.display=temReg?'':'none';
   document.getElementById('regularidadeVazio').style.display=temReg?'none':'';
   const regCores=[COLORS.verdeEscuro,COLORS.azulClaro,COLORS.amarelo,COLORS.roxo,COLORS.laranja];
   drawChart('reg','chRegularidade',{type:'doughnut',
