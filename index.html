@@ -151,6 +151,8 @@
   #dataUpdated{font-weight:400;color:var(--texto-suave);}
   #dataUpdated b{color:var(--azul-escuro);font-weight:700;}
   #dataUpdated .aviso{background:#FDF3E0;color:#9C6B14;font-weight:700;padding:1px 8px;border-radius:10px;border:1px solid #E5A93C;}
+  .kpis-valor{margin-top:-8px;}
+  .kpis-valor .kpi .num{font-size:21px;}
   .kpi .sub{font-size:11px;color:var(--texto-suave);margin-top:2px;}
   .kpi.roxo{border-top-color:var(--roxo);}
   .grid.c1{grid-template-columns:1fr;}
@@ -256,6 +258,7 @@
 
   <div class="filters" id="filterPanel"></div>
   <div class="kpis" id="kpiRow"></div>
+  <div class="kpis kpis-valor" id="kpiValores" style="display:none;"></div>
 
   <!-- ===== VISÃO GERAL ===== -->
   <div class="tab-panel active" id="tab-geral">
@@ -508,7 +511,7 @@ const CATEGORIAS_COM_NF = ['FORNECEDOR'];
 const GITHUB_REPO = '';
 // Filtro de categoria aplicado ao abrir o painel: todas as categorias,
 // MENOS as que contêm estes textos. Para abrir sem filtro, deixe a lista vazia: []
-const CATEGORIAS_FORA_DO_PADRAO = ['REEMBOLSO','DESCREDENCIADO'];
+const CATEGORIAS_FORA_DO_PADRAO = ['REEMBOLSO','DESCREDENCIADO', 'FORNECEDOR'];
 
 // ============ CONSULTAS SQL (fixas) ============
 // Texto mostrado na aba "Consultas SQL". Se mudar alguma consulta no Oracle,
@@ -544,7 +547,9 @@ pegSit: `SELECT DISTINCT --PRESTADORES QUE ENVIARAM PEG - COMPETÊNCIA CONTÁBIL
                       FROM SAM_DOCUMENTOFISCAL DF
                       JOIN SAM_DOCUMENTOFISCAL_NOTA DFN ON DFN.DOCUMENTOFISCAL = DF.HANDLE
                       WHERE DF.PAGAMENTO = P.AGRUPADORPAGAMENTO)
-         THEN 'SIM' ELSE 'NAO' END                                         AS TEM_NOTA
+         THEN 'SIM' ELSE 'NAO' END                                         AS TEM_NOTA,
+    P.TOTALINFORMADO                                                      AS VALOR_APRESENTADO,
+    P.TOTALAPAGAR                                                         AS VALOR_A_PAGAR
 FROM SAM_PEG P
     JOIN SAM_GUIA G ON G.PEG = P.HANDLE
     LEFT JOIN SAM_PRESTADOR PRE ON PRE.HANDLE = CASE WHEN P.TABREGIMEPGTO = 2 THEN G.EXECUTOR ELSE P.RECEBEDOR END
@@ -607,7 +612,7 @@ ORDER BY PRE.NOME, MES_ANO`
 // Descrição de cada consulta na aba "Consultas SQL"
 let SQL_DESCRICAO = {
   cadastro:'Cadastro completo de prestadores, com categoria e tipo. É a base para saber quem não enviou nada no período.',
-  pegSit:'Cada PEG do período com o prestador, a data contábil, a situação no fluxo (DECODE de SAM_PEG.SITUACAO) e se já tem pagamento gerado (SAM_PEG.AGRUPADORPAGAMENTO) e nota fiscal ligada a esse pagamento. Quando o regime de pagamento é 2, o prestador é o executor da guia; senão, o recebedor do PEG.',
+  pegSit:'Cada PEG do período com o prestador, a data contábil, a situação no fluxo (DECODE de SAM_PEG.SITUACAO) se já tem pagamento gerado (SAM_PEG.AGRUPADORPAGAMENTO), se há nota fiscal ligada a esse pagamento, o valor apresentado (TOTALINFORMADO) e o valor a pagar calculado (TOTALAPAGAR). Quando o regime de pagamento é 2, o prestador é o executor da guia; senão, o recebedor do PEG.',
   pegQtd:'Quantidade de PEGs e de guias por prestador e competência contábil, em todas as situações.',
   notas:'Notas fiscais incluídas no período, ligadas ao prestador recebedor do pagamento. A competência é o mês de inclusão da nota.'
 };
@@ -717,7 +722,9 @@ function buildModel(){
     const d=toDate(r.DATA_CONTABIL);
     const sn=v=>v===undefined?null:labelKey(v)==='sim';
     PEGS.push({cpf:p.cpf, peg:r.PEG, data:ymd(d), mes:parseMesAno(r.MES_ANO,d), situacao:normSituacao(r.SITUACAO_PEG),
-      temPag:sn(r.TEM_PAGAMENTO), temNota:sn(r.TEM_NOTA)});
+      temPag:sn(r.TEM_PAGAMENTO), temNota:sn(r.TEM_NOTA),
+      vApres:r.VALOR_APRESENTADO===undefined?null:(+r.VALOR_APRESENTADO||0),
+      vPagar:r.VALOR_A_PAGAR===undefined?null:(+r.VALOR_A_PAGAR||0)});
   });
   (SOURCES.pegQtd||[]).forEach(r=>{
     const p=add(r,false); if(!p) return;
@@ -852,15 +859,15 @@ function computeView(){
   let notas=NOTAS.filter(r=>mesOK(r.mes));
 
   const agg={};
-  const A=k=>agg[k]||(agg[k]={peg:0,guia:0,pegMes:{},guiaMes:{},sit:{},aberto:0,faturado:0,nNotas:0,valorNotas:0});
-  if(usaDetalhe) pegs.forEach(r=>{ const a=A(r.cpf); a.peg++; a.pegMes[r.mes]=(a.pegMes[r.mes]||0)+1;
+  const A=k=>agg[k]||(agg[k]={peg:0,guia:0,pegMes:{},guiaMes:{},sit:{},aberto:0,faturado:0,nNotas:0,valorNotas:0,vApres:0,vPagar:0});
+  if(usaDetalhe) pegs.forEach(r=>{ const a=A(r.cpf); a.peg++; if(!['cancelado','devolvido'].includes(labelKey(r.situacao))){ a.vApres+=r.vApres||0; a.vPagar+=r.vPagar||0; } a.pegMes[r.mes]=(a.pegMes[r.mes]||0)+1;
     a.sit[r.situacao]=(a.sit[r.situacao]||0)+1; if(sitAberta(r.situacao)) a.aberto++; if(sitFaturada(r.situacao)) a.faturado++; });
   qtds.forEach(r=>{ const a=A(r.cpf);
     if(!usaDetalhe){ a.peg+=r.pegs; a.pegMes[r.mes]=(a.pegMes[r.mes]||0)+r.pegs; }
     if(!usaDetalhe||a.pegMes[r.mes]){ a.guia+=r.guias; a.guiaMes[r.mes]=(a.guiaMes[r.mes]||0)+r.guias; } });
   notas.forEach(r=>{ const a=A(r.cpf); a.nNotas++; a.valorNotas+=r.valor; });
 
-  const vazio={peg:0,guia:0,pegMes:{},guiaMes:{},sit:{},aberto:0,faturado:0,nNotas:0,valorNotas:0};
+  const vazio={peg:0,guia:0,pegMes:{},guiaMes:{},sit:{},aberto:0,faturado:0,nNotas:0,valorNotas:0,vApres:0,vPagar:0};
   const prests=[];
   PRESTS.forEach(p=>{
     if(filters.categoria.size&&!filters.categoria.has(p.categoria)) return;
@@ -884,7 +891,29 @@ function computeView(){
 }
 
 // ============ KPIs ============
+const temValores=()=>PEGS.some(r=>r.vApres!==null);
+function renderKpisValor(V){
+  const el=document.getElementById('kpiValores');
+  if(!temValores()){ el.style.display='none'; return; }
+  el.style.display='';
+  const ok=V.pegs.filter(r=>!['cancelado','devolvido'].includes(labelKey(r.situacao)));
+  const soma=(l,c)=>l.reduce((a,r)=>a+(r[c]||0),0);
+  const brl=v=>nfBRLc.format(v);
+  const apres=soma(ok,'vApres'), pagar=soma(ok,'vPagar');
+  const pend=ok.filter(r=>r.temPag===true&&r.temNota===false);
+  const anal=ok.filter(r=>r.temPag===false&&!sitFaturada(r.situacao));
+  const comN=ok.filter(r=>r.temNota===true);
+  const k=[
+    ['info',brl(apres),'Valor apresentado',fmtN(ok.length)+' PEGs · total informado pelo prestador'],
+    ['info',brl(pagar),'Valor a pagar (calculado)',fmtPct(pagar,apres)+' do apresentado'],
+    ['warn',brl(soma(pend,'vPagar')),'Sem nota · pag. gerado',fmtN(pend.length)+' PEGs · apresentado '+brl(soma(pend,'vApres'))],
+    ['neutro',brl(soma(anal,'vApres')),'Em análise (apresentado)',fmtN(anal.length)+' PEGs sem pagamento gerado'],
+    ['ok',brl(soma(comN,'vPagar')),'Com nota (a pagar)',fmtN(comN.length)+' PEGs · apresentado '+brl(soma(comN,'vApres'))]
+  ];
+  el.innerHTML=k.map(([c,num,lbl,sub])=>`<div class="kpi ${c}" title="${esc(lbl)}"><div class="num">${num}</div><div class="lbl">${lbl}</div><div class="sub">${sub}</div></div>`).join('');
+}
 function renderKpis(V){
+  renderKpisValor(V);
   const temCad=!!SOURCES.cadastro;
   const cad=V.prests.filter(p=>p.noCadastro).length;
   const enviaram=V.prests.filter(p=>p.peg>0).length;
@@ -1148,6 +1177,8 @@ function baseSpec(V){
       {h:'Data contábil',v:r=>fmtData(r.data),csv:r=>fmtData(r.data)},
       {h:'Competência',v:r=>fmtComp(r.mes),csv:r=>fmtComp(r.mes)},
       {h:'Situação',v:r=>badge(SIT_BADGE[r.situacao]||'b-cinza',r.situacao),csv:r=>r.situacao},
+      ...(temValores()?[{h:'Valor apresentado',num:1,v:r=>fmtBRL(r.vApres),csv:r=>(r.vApres||0).toFixed(2).replace('.',',')},
+        {h:'Valor a pagar',num:1,v:r=>fmtBRL(r.vPagar),csv:r=>(r.vPagar||0).toFixed(2).replace('.',',')}]:[]),
       {h:'Pagamento gerado',v:r=>r.temPag===null?'—':r.temPag?'Sim':'Não',csv:r=>r.temPag===null?'':r.temPag?'Sim':'Não'},
       {h:'Nota fiscal',v:r=>r.temNota===null?'—':r.temNota?'Sim':'Não',csv:r=>r.temNota===null?'':r.temNota?'Sim':'Não'},
       {h:'Etapa',v:r=>{const e=etapaPeg(r); return e?badge(ETAPA_BADGE[e],e):'—';},csv:r=>etapaPeg(r)||''}],
@@ -1177,6 +1208,8 @@ function baseSpec(V){
     {h:'Guias',num:1,v:p=>p.guia?fmtN(p.guia):'·',csv:p=>p.guia},
     {h:'Faturados',num:1,v:p=>p.faturado?fmtN(p.faturado):'·',csv:p=>p.faturado},
     {h:'Em aberto',num:1,v:p=>p.aberto?fmtN(p.aberto):'·',csv:p=>p.aberto},
+    ...(temValores()?[{h:'Valor apresentado',num:1,v:p=>p.vApres?fmtBRL(p.vApres):'·',csv:p=>p.vApres.toFixed(2).replace('.',',')},
+      {h:'Valor a pagar',num:1,v:p=>p.vPagar?fmtBRL(p.vPagar):'·',csv:p=>p.vPagar.toFixed(2).replace('.',',')}]:[]),
     {h:'Notas',num:1,v:p=>p.nNotas?fmtN(p.nNotas):'·',csv:p=>p.nNotas},
     {h:'Valor notas',num:1,v:p=>p.valorNotas?fmtBRL(p.valorNotas):'·',csv:p=>p.valorNotas.toFixed(2).replace('.',',')},
     {h:'Movimento',v:p=>badge(MOV_BADGE[p.movimento],p.movimento),csv:p=>p.movimento}];
