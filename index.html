@@ -478,7 +478,7 @@
           <button data-view="pegs">PEGs</button>
           <button data-view="notas">Notas fiscais</button>
         </div>
-        <input type="text" id="searchBox" placeholder="Buscar por nome, fantasia, CPF/CNPJ, e-mail, tipo, nº do PEG ou da nota...">
+        <input type="text" id="searchBox" placeholder="Buscar por nome, fantasia, CPF/CNPJ, e-mail, telefone, tipo, nº do PEG ou da nota...">
         <span class="count-tag" id="rowCount"></span>
         <button class="btn-refresh" id="btnCsv">⬇ Exportar CSV (filtrado)</button>
       </div>
@@ -530,7 +530,11 @@ cadastro: `SELECT --TODOS OS PRESTADORES - GERAL
     PRE.FANTASIA                AS NOME_FANTASIA,
     CATP.DESCRICAO              AS CATEGORIA_PRESTADOR,
     TPP.DESCRICAO               AS TIPO_PRESTADOR,
-    PRE.EMAIL                   AS EMAIL
+    PRE.EMAIL                   AS EMAIL,
+    (SELECT MAX(E.TELEFONE1)
+       FROM SAM_PRESTADOR_ENDERECO E
+      WHERE E.PRESTADOR = PRE.HANDLE)   AS TELEFONE,
+    PRE.CELULAR                 AS CELULAR
 FROM SAM_PRESTADOR PRE
     LEFT JOIN SAM_CATEGORIA_PRESTADOR CATP ON CATP.HANDLE = PRE.CATEGORIA
     LEFT JOIN SAM_TIPOPRESTADOR       TPP  ON TPP.HANDLE  = PRE.TIPOPRESTADOR
@@ -618,7 +622,7 @@ ORDER BY PRE.NOME, MES_ANO`
 
 // Descrição de cada consulta na aba "Consultas SQL"
 let SQL_DESCRICAO = {
-  cadastro:'Cadastro completo de prestadores, com categoria, tipo e e-mail. É a base para saber quem não enviou nada no período.',
+  cadastro:'Cadastro completo de prestadores, com categoria, tipo, e-mail, telefone do endereço e celular. É a base para saber quem não enviou nada no período.',
   pegSit:'Cada PEG do período com o prestador, a data contábil, a situação no fluxo (DECODE de SAM_PEG.SITUACAO) se já tem pagamento gerado (SAM_PEG.AGRUPADORPAGAMENTO), se há nota fiscal ligada a esse pagamento, o valor apresentado (TOTALINFORMADO) e o valor a pagar calculado (TOTALAPAGAR). Quando o regime de pagamento é 2, o prestador é o executor da guia; senão, o recebedor do PEG.',
   pegQtd:'Quantidade de PEGs e de guias por prestador e competência contábil, em todas as situações.',
   notas:'Notas fiscais incluídas no período, ligadas ao prestador recebedor do pagamento. A competência é o mês de inclusão da nota.'
@@ -705,6 +709,10 @@ function normSituacao(v){
 function sitAberta(s){ return SIT_ABERTO.includes(labelKey(s)); }
 function sitFaturada(s){ return labelKey(s)===SIT_FATURADO; }
 
+function juntaFones(...v){ const vistos=new Set(), out=[];
+  v.map(txt).filter(Boolean).forEach(f=>{ const k=f.replace(/\D/g,''); if(k&&!vistos.has(k)){ vistos.add(k); out.push(f); } });
+  return out.join(' · '); }
+
 // ============ estado ============
 let SOURCES = {cadastro:null,pegSit:null,pegQtd:null,notas:null};   // linhas brutas por relatório
 let SOURCE_INFO = {};
@@ -717,10 +725,10 @@ function buildModel(){
   PREST_MAP={}; PRESTS=[]; PEGS=[]; QTDS=[]; NOTAS=[];
   const add=(r,fromCadastro)=>{
     const k=docKey(r.CPF_CNPJ); if(!k) return null;
-    if(PREST_MAP[k]){ if(!PREST_MAP[k].email&&r.EMAIL) PREST_MAP[k].email=txt(r.EMAIL).toLowerCase(); return PREST_MAP[k]; }
+    if(PREST_MAP[k]){ if(!PREST_MAP[k].email&&r.EMAIL) PREST_MAP[k].email=txt(r.EMAIL).toLowerCase(); if(!PREST_MAP[k].telefone&&(r.TELEFONE||r.CELULAR)) PREST_MAP[k].telefone=juntaFones(r.TELEFONE,r.CELULAR); return PREST_MAP[k]; }
     const p={cpf:k, handle:r.HANDLE_PRESTADOR??null,
       nome:txt(r.NOME_PRESTADOR)||'—', fantasia:txt(r.NOME_FANTASIA??r.NOME_FANTASIA_PRESTADOR),
-      categoria:txt(r.CATEGORIA_PRESTADOR)||'—', tipo:txt(r.TIPO_PRESTADOR)||'—', email:txt(r.EMAIL).toLowerCase(), noCadastro:fromCadastro};
+      categoria:txt(r.CATEGORIA_PRESTADOR)||'—', tipo:txt(r.TIPO_PRESTADOR)||'—', email:txt(r.EMAIL).toLowerCase(), telefone:juntaFones(r.TELEFONE,r.CELULAR), noCadastro:fromCadastro};
     p.doc=fmtDoc(k,p.categoria);
     PREST_MAP[k]=p; PRESTS.push(p); return p;
   };
@@ -1217,6 +1225,7 @@ function baseSpec(V){
   const cols=[
     {h:'Prestador',v:prestCell,csv:p=>p.nome},{h:'Fantasia',csv:p=>p.fantasia},
     ...(PRESTS.some(p=>p.email)?[{h:'E-mail',v:p=>p.email?p.email.split(/[;,\s]+/).filter(Boolean).map(e=>`<a href="mailto:${esc(e)}">${esc(e)}</a>`).join('<br>'):'·',csv:p=>p.email||''}]:[]),
+    ...(PRESTS.some(p=>p.telefone)?[{h:'Telefone',cls:'doc',v:p=>p.telefone?esc(p.telefone):'·',csv:p=>p.telefone||''}]:[]),
     {h:'CPF / CNPJ',cls:'doc',v:p=>p.doc,csv:p=>p.doc},
     {h:'Categoria',v:p=>esc(p.categoria),csv:p=>p.categoria},{h:'Tipo',v:p=>esc(p.tipo),csv:p=>p.tipo},
     ...V.meses.map(m=>({h:'PEGs '+fmtComp(m),num:1,v:p=>p.pegMes[m]?fmtN(p.pegMes[m]):'·',csv:p=>p.pegMes[m]||0})),
@@ -1228,7 +1237,7 @@ function baseSpec(V){
     {h:'Notas',num:1,v:p=>p.nNotas?fmtN(p.nNotas):'·',csv:p=>p.nNotas},
     {h:'Valor notas',num:1,v:p=>p.valorNotas?fmtBRL(p.valorNotas):'·',csv:p=>p.valorNotas.toFixed(2).replace('.',',')},
     {h:'Movimento',v:p=>badge(MOV_BADGE[p.movimento],p.movimento),csv:p=>p.movimento}];
-  return {rows,cols,text:p=>[p.nome,p.fantasia,p.doc,p.cpf,p.tipo,p.categoria,p.movimento,p.email||''].join(' ')};
+  return {rows,cols,text:p=>[p.nome,p.fantasia,p.doc,p.cpf,p.tipo,p.categoria,p.movimento,p.email||'',p.telefone||''].join(' ')};
 }
 function renderTableBase(V){
   LAST_VIEW=V;
@@ -1477,8 +1486,9 @@ function mostrarAtualizacao(data,origem,detalhe,modo){
   const el=document.getElementById('dataUpdated');
   if(!data||isNaN(data)){ el.innerHTML=''; el.title=''; return; }
   const quandoData=data.toLocaleDateString('pt-BR')+' às '+data.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const dias=Math.floor((Date.now()-data.getTime())/86400000);
-  const quando=dias<=0?'hoje':dias===1?'há 1 dia':'há '+dias+' dias';
+  const meiaNoite=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+  const dias=Math.round((meiaNoite(new Date())-meiaNoite(data))/86400000);
+  const quando=dias<=0?'hoje':dias===1?'ontem':'há '+dias+' dias';
   el.innerHTML=`· dados atualizados em <b>${quandoData}</b> (${esc(origem)}) `
     +(dias>DIAS_ALERTA_DESATUALIZADO?`<span class="aviso">⚠ ${quando}</span>`:'· '+quando);
   el.title=detalhe||'';
